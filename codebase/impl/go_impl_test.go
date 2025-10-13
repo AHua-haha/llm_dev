@@ -8,6 +8,8 @@ import (
 	"go/token"
 	"go/types"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 func Test_fileSymExtractOps_extractSymbol(t *testing.T) {
@@ -96,6 +98,48 @@ func main() {
 					continue
 				}
 				fmt.Printf("pkg.Path(): %v\n", pkg.Path())
+			}
+		}
+	})
+}
+
+func Test_parseProject(t *testing.T) {
+	t.Run("test go parse whole project", func(t *testing.T) {
+		cfg := &packages.Config{
+			Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedFiles,
+			Fset: token.NewFileSet(),
+			Dir:  "/home/ahua/workspace/llm/llm_dev", // Change this
+		}
+
+		pkgs, err := packages.Load(cfg, "./...")
+		if err != nil {
+			panic(err)
+		}
+
+		for _, pkg := range pkgs {
+			fmt.Printf("📦 Package: %s\n", pkg.PkgPath)
+
+			for i, file := range pkg.Syntax {
+				fileName := pkg.GoFiles[i]
+				fmt.Printf("\n🔍 File: %s\n", fileName)
+
+				// Walk the AST of the file and pull info from pkg.TypesInfo
+				ast.Inspect(file, func(n ast.Node) bool {
+					ident, ok := n.(*ast.Ident)
+					if !ok {
+						return true
+					}
+
+					// Check if it's a used identifier (like a type reference)
+					if obj, ok := pkg.TypesInfo.Uses[ident]; ok {
+						pos := obj.Pos()
+						p := cfg.Fset.Position(pos)
+						if p.Filename != fileName {
+							fmt.Printf("%s , %s\n", p.Filename, ident.Name)
+						}
+					}
+					return true
+				})
 			}
 		}
 	})
