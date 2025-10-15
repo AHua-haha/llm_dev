@@ -7,8 +7,11 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"os"
+	"path/filepath"
 	"testing"
 
+	ignore "github.com/sabhiram/go-gitignore"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -129,9 +132,11 @@ func Test_parseProject(t *testing.T) {
 					if !ok {
 						return true
 					}
+					fmt.Printf("ident: %v\n", ident)
 
 					// Check if it's a used identifier (like a type reference)
 					if obj, ok := pkg.TypesInfo.Uses[ident]; ok {
+						fmt.Printf("obj.String(): %v\n", obj.String())
 						pos := obj.Pos()
 						p := cfg.Fset.Position(pos)
 						if p.Filename != fileName {
@@ -141,6 +146,50 @@ func Test_parseProject(t *testing.T) {
 					return true
 				})
 			}
+		}
+	})
+}
+
+func Test_WalkDir(t *testing.T) {
+	t.Run("test walk dir with gitignore", func(t *testing.T) {
+		root := "/home/ahua/workspace/llm/llm_dev"
+		ig, err := ignore.CompileIgnoreFile(filepath.Join(root, ".gitignore"))
+		if err != nil {
+			return
+		}
+		walkFunc := func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+
+			// Get path relative to root
+			relPath, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+
+			// Skip root
+			if relPath == "." {
+				return nil
+			}
+
+			// Check if the file/dir is ignored
+			if ig.MatchesPath(relPath) {
+				if d.IsDir() {
+					// Skip entire directory
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
+			// Process the file/dir
+			fmt.Println("Included:", relPath)
+
+			return nil
+		}
+		err = filepath.WalkDir(root, walkFunc)
+		if err != nil {
+			return
 		}
 	})
 }
