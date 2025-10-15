@@ -56,5 +56,5 @@ func (fileops *fileSymExtractOps) extractSymbol() {
 	parser := tree_sitter.NewParser()
 	parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
 	tree := parser.Parse(data, nil)
-	common.Walk(tree.RootNode(), fileops.nodeOps)
+	common.WalkAst(tree.RootNode(), fileops.nodeOps)
 }

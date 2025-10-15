@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"io/fs"
 	"testing"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
@@ -180,7 +181,7 @@ func isSignificantTag(tag string) bool {
 		name string // description of this test case
 		// Named input parameters for target function.
 		root *tree_sitter.Node
-		op   NodeOperation
+		op   AstNodeOps
 	}{
 		// TODO: Add test cases.
 		{
@@ -191,7 +192,66 @@ func isSignificantTag(tag string) bool {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			Walk(tt.root, tt.op)
+			WalkAst(tt.root, tt.op)
+		})
+	}
+}
+
+type simpleNode struct {
+	name      string
+	childList []Node
+}
+
+func (n *simpleNode) child() []Node {
+	return n.childList
+}
+
+func (n *simpleNode) addChild(node Node) {
+	n.childList = append(n.childList, node)
+}
+
+func TestWalkDirGenTreeNode(t *testing.T) {
+
+	ops := func(path string, d fs.DirEntry) (Node, bool) {
+		fmt.Printf("info.Name(): %v\n", d.Name())
+		if d.IsDir() {
+			n := &simpleNode{
+				name: d.Name(),
+			}
+			return n, true
+		} else {
+			n := &simpleNode{
+				name: d.Name(),
+			}
+			return n, false
+		}
+	}
+
+	print_ops := func(node Node) bool {
+		simple_node, _ := node.(*simpleNode)
+		fmt.Printf("simple_node.name: %v\n", simple_node.name)
+		return true
+	}
+
+	tests := []struct {
+		name string // description of this test case
+		// Named input parameters for target function.
+		root    string
+		file_op FileOps
+		want    Node
+	}{
+		// TODO: Add test cases.
+		{
+			name:    "test simple node",
+			root:    "/home/ahua/workspace/llm/llm_dev",
+			file_op: ops,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			op := GenIgnoreOps(tt.root, tt.file_op)
+			got := WalkDirGenNode(tt.root, op)
+			WalkNode(got, print_ops)
 		})
 	}
 }

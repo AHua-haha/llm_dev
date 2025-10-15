@@ -1,13 +1,20 @@
 package common
 
-import tree_sitter "github.com/tree-sitter/go-tree-sitter"
+import (
+	"io/fs"
 
-type NodeType int
-type NodeOperation func(root *tree_sitter.Node) bool
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+)
+
+type AstNodeOps func(root *tree_sitter.Node) bool
+
+type FileOps func(path string, d fs.DirEntry) (Node, bool)
+
+type NodeOps func(node Node) bool
 
 type Node interface {
-	nodeType() NodeType
 	child() []Node
+	addChild(node Node)
 }
 
 type file struct {
