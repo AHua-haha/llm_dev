@@ -202,12 +202,15 @@ type simpleNode struct {
 	childList []Node
 }
 
-func (n *simpleNode) child() []Node {
+func (n *simpleNode) Child() []Node {
 	return n.childList
 }
 
-func (n *simpleNode) addChild(node Node) {
+func (n *simpleNode) AddChild(node Node) {
 	n.childList = append(n.childList, node)
+}
+func (n *simpleNode) Identifier() string {
+	return n.name
 }
 
 func TestWalkDirGenTreeNode(t *testing.T) {

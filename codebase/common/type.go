@@ -13,13 +13,44 @@ type FileOps func(path string, d fs.DirEntry) (Node, bool)
 type NodeOps func(node Node) bool
 
 type Node interface {
-	child() []Node
-	addChild(node Node)
+	Child() []Node
+	AddChild(node Node)
+	Identifier() string
 }
 
-type file struct {
-	filepath string
+type File struct {
+	Path         string
+	Ext          string
+	ChildNode    []Node
+	ExternalNode []Node
 }
 
-type symbolID interface {
+func (f *File) Child() []Node {
+	return f.ChildNode
+}
+
+func (f *File) AddChild(node Node) {
+	f.ChildNode = append(f.ChildNode, node)
+}
+
+func (f *File) Identifier() string {
+	return f.Path
+}
+
+type Dir struct {
+	Path         string
+	ChildNode    []Node
+	ExternalNode []Node
+}
+
+func (d *Dir) Child() []Node {
+	return d.ChildNode
+}
+
+func (d *Dir) AddChild(node Node) {
+	d.ChildNode = append(d.ChildNode, node)
+}
+
+func (d *Dir) Identifier() string {
+	return d.Path
 }

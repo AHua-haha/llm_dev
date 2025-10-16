@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"llm_dev/codebase/common"
 	"os"
 	"path/filepath"
 	"testing"
@@ -192,4 +193,28 @@ func Test_WalkDir(t *testing.T) {
 			return
 		}
 	})
+}
+
+func TestParseGoProject(t *testing.T) {
+	tests := []struct {
+		name string // description of this test case
+		// Named input parameters for target function.
+		root string
+		want common.Node
+	}{
+		// TODO: Add test cases.
+		{
+			name: "test build go project",
+			root: "/home/ahua/workspace/llm/llm_dev",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ParseGoProject(tt.root)
+			// TODO: update the condition below to compare got with tt.want.
+			// if true {
+			// 	t.Errorf("ParseGoProject() = %v, want %v", got, tt.want)
+			// }
+		})
+	}
 }

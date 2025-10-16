@@ -68,7 +68,7 @@ func walkDir(root string, d fs.DirEntry, file_op FileOps) Node {
 	for _, entry := range entries {
 		child := walkDir(filepath.Join(root, entry.Name()), entry, file_op)
 		if child != nil {
-			node.addChild(child)
+			node.AddChild(child)
 		}
 	}
 	return node
@@ -79,7 +79,7 @@ func WalkNode(root Node, node_ops NodeOps) {
 	if !walk_child {
 		return
 	}
-	for _, child := range root.child() {
+	for _, child := range root.Child() {
 		WalkNode(child, node_ops)
 	}
 }
