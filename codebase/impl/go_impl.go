@@ -19,6 +19,7 @@ type CodeBase struct {
 	rootPath         string
 	rootNode         common.Node
 	nodeByIdentifier map[string]common.Node
+	nodeCount        int
 }
 
 func (cb *CodeBase) buildMapOp(r common.Node) bool {
@@ -69,6 +70,7 @@ func (cb *CodeBase) createNodeOp(path string, d fs.DirEntry) (common.Node, bool)
 		dir := common.Dir{
 			Path: path,
 		}
+		cb.nodeCount++
 		log.Info().
 			Str("dir", path).
 			Msg("create dir node")
@@ -77,10 +79,14 @@ func (cb *CodeBase) createNodeOp(path string, d fs.DirEntry) (common.Node, bool)
 		name := d.Name()
 		ext := filepath.Ext(name)
 		if ext == ".go" {
+			goFileNode := parseGoFile(path, d)
+			if goFileNode != nil {
+				cb.nodeCount += len(goFileNode.ChildNode) + 1
+			}
 			log.Info().
 				Str("file", path).
 				Msg("create go file node")
-			return parseGoFile(path, d), false
+			return goFileNode, false
 		}
 		log.Info().
 			Str("ext", ext).
