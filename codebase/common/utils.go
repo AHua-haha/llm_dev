@@ -2,8 +2,11 @@ package common
 
 import (
 	"io/fs"
+	_ "llm_dev/utils"
 	"os"
 	"path/filepath"
+
+	"github.com/rs/zerolog/log"
 
 	ignore "github.com/sabhiram/go-gitignore"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
@@ -22,11 +25,16 @@ func WalkAst(root *tree_sitter.Node, op AstNodeOps) {
 func GenIgnoreOps(root string, op FileOps) FileOps {
 	ig, err := ignore.CompileIgnoreFile(filepath.Join(root, ".gitignore"))
 	if err != nil {
+		log.Error().Msgf("compile ignore failed")
 		return op
 	}
 	ignore_ops := func(path string, d fs.DirEntry) (Node, bool) {
 		relPath, err := filepath.Rel(root, path)
 		if err != nil {
+			log.Error().
+				Str("root", root).
+				Str("path", path).
+				Msg("get relative path failed")
 			return nil, false
 		}
 		if d.Type()&os.ModeSymlink != 0 {
@@ -43,6 +51,9 @@ func GenIgnoreOps(root string, op FileOps) FileOps {
 func WalkDirGenNode(root string, file_op FileOps) Node {
 	info, err := os.Stat(root)
 	if err != nil {
+		log.Error().Err(err).
+			Str("file", root).
+			Msg("get file stat fail")
 		return nil
 	}
 	return walkDir(root, fs.FileInfoToDirEntry(info), file_op)
@@ -62,6 +73,9 @@ func walkDir(root string, d fs.DirEntry, file_op FileOps) Node {
 
 	entries, err := os.ReadDir(root)
 	if err != nil {
+		log.Error().Err(err).
+			Str("file", root).
+			Msg("get file entry failed")
 		return node
 	}
 

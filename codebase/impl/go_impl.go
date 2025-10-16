@@ -16,53 +16,86 @@ import (
 )
 
 type CodeBase struct {
-	root             common.Node
+	rootPath         string
+	rootNode         common.Node
 	nodeByIdentifier map[string]common.Node
 }
 
-func BuildCodeBase(root string) *CodeBase {
-	ops := func(path string, d fs.DirEntry) (common.Node, bool) {
-		if d.IsDir() {
-			dir := common.Dir{
-				Path: path,
-			}
-			return &dir, true
-		} else {
-			name := d.Name()
-			ext := filepath.Ext(name)
-			if ext == ".go" {
-				return parseGoFile(path, d), false
-			}
-			return nil, false
-		}
-	}
-	ignore_git_ops := common.GenIgnoreOps(root, ops)
-	node := common.WalkDirGenNode(root, ignore_git_ops)
-	nodeMap := make(map[string]common.Node)
-	buildMapOp := func(r common.Node) bool {
-		switch node := r.(type) {
-		case *common.Dir:
-			relPath, err := filepath.Rel(root, node.Path)
-			if err != nil {
-				log.Error().Msg("get relative path failed")
-				return true
-			}
-			_, exist := nodeMap[relPath]
-			if exist {
-				log.Error().Msgf("key %s already exist", relPath)
-				return true
-			}
-			log.Error().Msgf("insert key %s", relPath)
-			nodeMap[relPath] = node
+func (cb *CodeBase) buildMapOp(r common.Node) bool {
+	switch node := r.(type) {
+	case *common.Dir:
+		relPath, err := filepath.Rel(cb.rootPath, node.Path)
+		if err != nil {
+			log.Error().Msg("get relative path failed")
 			return true
-		case *common.File:
-			return false
-		default:
-			return false
 		}
+		cb.tryInsertNode(relPath, node)
+		return true
+	case *common.File:
+		relPath, err := filepath.Rel(cb.rootPath, node.Path)
+		if err != nil {
+			log.Error().Msg("get relative path failed")
+			return true
+		}
+		cb.tryInsertNode(relPath, node)
+		for _, symbol := range node.ChildNode {
+			key := fmt.Sprintf("%s-%s", relPath, symbol.Name())
+			cb.tryInsertNode(key, symbol)
+		}
+		return false
+	default:
+		return false
 	}
-	common.WalkNode(node, buildMapOp)
-	return nil
+}
+func (cb *CodeBase) constructNode() {
+	ignore_git_ops := common.GenIgnoreOps(cb.rootPath, cb.createNodeOp)
+	cb.rootNode = common.WalkDirGenNode(cb.rootPath, ignore_git_ops)
+}
+func (cb *CodeBase) constructNodeMap() {
+	common.WalkNode(cb.rootNode, cb.buildMapOp)
+}
+func (cb *CodeBase) tryInsertNode(key string, node common.Node) {
+	_, exist := cb.nodeByIdentifier[key]
+	if exist {
+		log.Error().Msgf("key %s already exist", key)
+		return
+	}
+	cb.nodeByIdentifier[key] = node
+	log.Info().Msgf("insert key %s", key)
+}
+
+func (cb *CodeBase) createNodeOp(path string, d fs.DirEntry) (common.Node, bool) {
+	if d.IsDir() {
+		dir := common.Dir{
+			Path: path,
+		}
+		log.Info().
+			Str("dir", path).
+			Msg("create dir node")
+		return &dir, true
+	} else {
+		name := d.Name()
+		ext := filepath.Ext(name)
+		if ext == ".go" {
+			log.Info().
+				Str("file", path).
+				Msg("create go file node")
+			return parseGoFile(path, d), false
+		}
+		log.Info().
+			Str("ext", ext).
+			Msg("skip file")
+		return nil, false
+	}
+}
+func BuildCodeBase(root string) *CodeBase {
+	codebase := &CodeBase{
+		rootPath:         root,
+		nodeByIdentifier: make(map[string]common.Node),
+	}
+	codebase.constructNode()
+	codebase.constructNodeMap()
+	return codebase
 }
 
 func parseGoFile(path string, d fs.DirEntry) *common.File {
