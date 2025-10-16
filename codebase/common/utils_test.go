@@ -209,7 +209,7 @@ func (n *simpleNode) Child() []Node {
 func (n *simpleNode) AddChild(node Node) {
 	n.childList = append(n.childList, node)
 }
-func (n *simpleNode) Identifier() string {
+func (n *simpleNode) Name() string {
 	return n.name
 }
 

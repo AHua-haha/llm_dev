@@ -15,7 +15,7 @@ type NodeOps func(node Node) bool
 type Node interface {
 	Child() []Node
 	AddChild(node Node)
-	Identifier() string
+	Name() string
 }
 
 type File struct {
@@ -33,7 +33,7 @@ func (f *File) AddChild(node Node) {
 	f.ChildNode = append(f.ChildNode, node)
 }
 
-func (f *File) Identifier() string {
+func (f *File) Name() string {
 	return f.Path
 }
 
@@ -51,6 +51,6 @@ func (d *Dir) AddChild(node Node) {
 	d.ChildNode = append(d.ChildNode, node)
 }
 
-func (d *Dir) Identifier() string {
+func (d *Dir) Name() string {
 	return d.Path
 }

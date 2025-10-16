@@ -5,12 +5,18 @@ import (
 	"io/fs"
 	"llm_dev/codebase/common"
 	"os"
+	"path/filepath"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
 )
 
-func ParseGoProject(root string) common.Node {
+type CodeBase struct {
+	root             common.Node
+	nodeByIdentifier map[string]common.Node
+}
+
+func BuildCodeBase(root string) *CodeBase {
 	ops := func(path string, d fs.DirEntry) (common.Node, bool) {
 		if d.IsDir() {
 			dir := common.Dir{
@@ -18,15 +24,33 @@ func ParseGoProject(root string) common.Node {
 			}
 			return &dir, true
 		} else {
-			return parseGoFile(path, d)
+			name := d.Name()
+			ext := filepath.Ext(name)
+			if ext == ".go" {
+				return parseGoFile(path, d), false
+			}
+			return nil, false
 		}
 	}
 	ignore_git_ops := common.GenIgnoreOps(root, ops)
 	node := common.WalkDirGenNode(root, ignore_git_ops)
-	return node
+	buildMapOp := func(root common.Node) bool {
+		switch node := root.(type) {
+		case *common.Dir:
+			fmt.Printf("node.Name(): %v\n", node.Name())
+			return true
+		case *common.File:
+			fmt.Printf("node.Path: %v\n", node.Path)
+			return false
+		default:
+			return false
+		}
+	}
+	common.WalkNode(node, buildMapOp)
+	return nil
 }
 
-func parseGoFile(path string, d fs.DirEntry) (*common.File, bool) {
+func parseGoFile(path string, d fs.DirEntry) *common.File {
 	parse_ops := fileSymExtractOps{
 		path: path,
 	}
@@ -41,7 +65,7 @@ func parseGoFile(path string, d fs.DirEntry) (*common.File, bool) {
 		Ext:       "go",
 		ChildNode: nodes,
 	}
-	return file_node, false
+	return file_node
 }
 
 type symbolGo struct {
@@ -59,7 +83,7 @@ func (s *symbolGo) AddChild(node common.Node) {
 	panic("not implemented") // TODO: Implement
 }
 
-func (s *symbolGo) Identifier() string {
+func (s *symbolGo) Name() string {
 	return s.name
 }
 
@@ -100,7 +124,6 @@ func (fileops *fileSymExtractOps) nodeOps(root *tree_sitter.Node) bool {
 		symbol.name = fileops.getString(NewPos(identifier))
 		symbol.body = NewPos(root)
 		symbol.summary = NewPos(root)
-		fmt.Printf("symbol.name: %v\n", symbol.name)
 		fileops.symbols = append(fileops.symbols, &symbol)
 		return false
 	case "function_declaration":
@@ -111,7 +134,6 @@ func (fileops *fileSymExtractOps) nodeOps(root *tree_sitter.Node) bool {
 			start: root.StartByte(),
 			end:   root.ChildByFieldName("body").StartByte(),
 		}
-		fmt.Printf("symbol.name: %v\n", symbol.name)
 		fileops.symbols = append(fileops.symbols, &symbol)
 		return false
 	case "method_declaration":
@@ -126,7 +148,6 @@ func (fileops *fileSymExtractOps) nodeOps(root *tree_sitter.Node) bool {
 			start: root.StartByte(),
 			end:   root.ChildByFieldName("body").StartByte(),
 		}
-		fmt.Printf("symbol.name: %v\n", symbol.name)
 		fileops.symbols = append(fileops.symbols, &symbol)
 		return false
 	default:
