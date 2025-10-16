@@ -7,6 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
+	_ "llm_dev/utils"
+
+	"github.com/rs/zerolog/log"
+
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
 )
@@ -34,13 +38,24 @@ func BuildCodeBase(root string) *CodeBase {
 	}
 	ignore_git_ops := common.GenIgnoreOps(root, ops)
 	node := common.WalkDirGenNode(root, ignore_git_ops)
-	buildMapOp := func(root common.Node) bool {
-		switch node := root.(type) {
+	nodeMap := make(map[string]common.Node)
+	buildMapOp := func(r common.Node) bool {
+		switch node := r.(type) {
 		case *common.Dir:
-			fmt.Printf("node.Name(): %v\n", node.Name())
+			relPath, err := filepath.Rel(root, node.Path)
+			if err != nil {
+				log.Error().Msg("get relative path failed")
+				return true
+			}
+			_, exist := nodeMap[relPath]
+			if exist {
+				log.Error().Msgf("key %s already exist", relPath)
+				return true
+			}
+			log.Error().Msgf("insert key %s", relPath)
+			nodeMap[relPath] = node
 			return true
 		case *common.File:
-			fmt.Printf("node.Path: %v\n", node.Path)
 			return false
 		default:
 			return false
@@ -157,11 +172,11 @@ func (fileops *fileSymExtractOps) nodeOps(root *tree_sitter.Node) bool {
 
 func (fileops *fileSymExtractOps) extractSymbol() {
 	data, err := os.ReadFile(fileops.path)
-	fileops.data = data
 	if err != nil {
-		fmt.Printf("err: %v\n", err)
+		log.Error().Msgf("read file error %s", err)
 		return
 	}
+	fileops.data = data
 
 	parser := tree_sitter.NewParser()
 	parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
