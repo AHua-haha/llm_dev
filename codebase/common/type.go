@@ -15,6 +15,8 @@ type NodeOps func(node Node) bool
 type Node interface {
 	Child() []Node
 	AddChild(node Node)
+	ExtNode() []Node
+	AddExternalNode(n Node)
 	Name() string
 }
 
@@ -36,6 +38,12 @@ func (f *File) AddChild(node Node) {
 func (f *File) Name() string {
 	return f.Path
 }
+func (f *File) ExtNode() []Node {
+	return f.ExternalNode
+}
+func (f *File) AddExternalNode(node Node) {
+	f.ExternalNode = append(f.ExternalNode, node)
+}
 
 type Dir struct {
 	Path         string
@@ -53,4 +61,10 @@ func (d *Dir) AddChild(node Node) {
 
 func (d *Dir) Name() string {
 	return d.Path
+}
+func (d *Dir) ExtNode() []Node {
+	return d.ExternalNode
+}
+func (d *Dir) AddExternalNode(node Node) {
+	d.ExternalNode = append(d.ExternalNode, node)
 }

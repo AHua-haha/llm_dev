@@ -97,3 +97,12 @@ func WalkNode(root Node, node_ops NodeOps) {
 		WalkNode(child, node_ops)
 	}
 }
+
+func CommonPrefix(s1, s2 string) string {
+	minLen := min(len(s1), len(s2))
+	i := 0
+	for i < minLen && s1[i] == s2[i] {
+		i++
+	}
+	return s1[:i]
+}

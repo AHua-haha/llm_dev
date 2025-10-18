@@ -2,14 +2,18 @@ package impl
 
 import (
 	"fmt"
+	"go/ast"
+	"go/token"
 	"io/fs"
 	"llm_dev/codebase/common"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "llm_dev/utils"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/tools/go/packages"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
@@ -20,6 +24,90 @@ type CodeBase struct {
 	rootNode         common.Node
 	nodeByIdentifier map[string]common.Node
 	nodeCount        int
+}
+
+func (cb *CodeBase) markExternal() bool {
+	for key, value := range cb.nodeByIdentifier {
+		if n, ok := value.(*symbolGo); ok {
+			n.minPrefix = key
+		}
+	}
+	cfg := &packages.Config{
+		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedFiles,
+		Fset: token.NewFileSet(),
+		Dir:  cb.rootPath, // Change this
+	}
+
+	pkgs, err := packages.Load(cfg, "./...")
+	if err != nil {
+		log.Error().Err(err).Msg("type check project fail")
+		return false
+	}
+
+	for _, pkg := range pkgs {
+		for i, file := range pkg.Syntax {
+
+			fileName := pkg.GoFiles[i]
+			relPath, _ := filepath.Rel(cb.rootPath, fileName)
+			ast.Inspect(file, func(n ast.Node) bool {
+				ident, ok := n.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				obj, ok := pkg.TypesInfo.Uses[ident]
+				if !ok {
+					return true
+				}
+				pos := obj.Pos()
+				p := cfg.Fset.Position(pos)
+				if p.Filename == fileName {
+					return true
+				}
+				declare_file_path, err := filepath.Rel(cb.rootPath, p.Filename)
+				if err != nil {
+					return true
+				}
+				key := fmt.Sprintf("%s |%s", declare_file_path, obj.Name())
+				node := cb.nodeByIdentifier[key]
+				if node == nil {
+					return true
+				}
+				symbol, ok := node.(*symbolGo)
+				if !ok {
+					return true
+				}
+				symbol.minPrefix = common.CommonPrefix(symbol.minPrefix, relPath)
+				return true
+			})
+		}
+	}
+	for key, value := range cb.nodeByIdentifier {
+		if n, ok := value.(*symbolGo); ok {
+			cb.addExternalNode(key, n)
+		}
+	}
+	return false
+}
+func (cb *CodeBase) addExternalNode(key string, symbol_node *symbolGo) {
+	idx := strings.IndexRune(key, '|')
+	if idx == -1 {
+		return
+	}
+	file := key[:idx-1]
+
+	prefix := symbol_node.minPrefix
+	p := file
+	for {
+		if strings.HasPrefix(prefix, p) {
+			break
+		}
+		node := cb.nodeByIdentifier[p]
+		if node != nil {
+			node.AddExternalNode(symbol_node)
+			log.Info().Str("node", p).Str("symbol", key).Msg("add external node")
+		}
+		p = filepath.Dir(p)
+	}
 }
 
 func (cb *CodeBase) buildMapOp(r common.Node) bool {
@@ -40,7 +128,7 @@ func (cb *CodeBase) buildMapOp(r common.Node) bool {
 		}
 		cb.tryInsertNode(relPath, node)
 		for _, symbol := range node.ChildNode {
-			key := fmt.Sprintf("%s-%s", relPath, symbol.Name())
+			key := fmt.Sprintf("%s |%s", relPath, symbol.Name())
 			cb.tryInsertNode(key, symbol)
 		}
 		return false
@@ -53,6 +141,8 @@ func (cb *CodeBase) constructNode() {
 	cb.rootNode = common.WalkDirGenNode(cb.rootPath, ignore_git_ops)
 }
 func (cb *CodeBase) constructNodeMap() {
+	cb.nodeByIdentifier = make(map[string]common.Node, cb.nodeCount)
+	log.Info().Int("node count", cb.nodeCount).Msg("init node map")
 	common.WalkNode(cb.rootNode, cb.buildMapOp)
 }
 func (cb *CodeBase) tryInsertNode(key string, node common.Node) {
@@ -96,11 +186,11 @@ func (cb *CodeBase) createNodeOp(path string, d fs.DirEntry) (common.Node, bool)
 }
 func BuildCodeBase(root string) *CodeBase {
 	codebase := &CodeBase{
-		rootPath:         root,
-		nodeByIdentifier: make(map[string]common.Node),
+		rootPath: root,
 	}
 	codebase.constructNode()
 	codebase.constructNodeMap()
+	codebase.markExternal()
 	return codebase
 }
 
@@ -123,9 +213,10 @@ func parseGoFile(path string, d fs.DirEntry) *common.File {
 }
 
 type symbolGo struct {
-	name    string
-	body    pos
-	summary pos
+	name      string
+	body      pos
+	summary   pos
+	minPrefix string
 }
 
 func (s *symbolGo) Child() []common.Node {
@@ -139,6 +230,12 @@ func (s *symbolGo) AddChild(node common.Node) {
 
 func (s *symbolGo) Name() string {
 	return s.name
+}
+func (s *symbolGo) ExtNode() []common.Node {
+	panic("not implemented") // TODO: Implement
+}
+func (s *symbolGo) AddExternalNode(node common.Node) {
+	panic("not implemented") // TODO: Implement
 }
 
 type pos struct {

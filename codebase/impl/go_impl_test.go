@@ -214,3 +214,16 @@ func TestBuildCodeBase(t *testing.T) {
 		})
 	}
 }
+
+func TestStringScan(t *testing.T) {
+	t.Run("test scan string", func(t *testing.T) {
+		key := "testfile.go| llll"
+		var file string
+		_, err := fmt.Sscanf(key, "%s |", &file)
+		if err != nil {
+			fmt.Printf("err: %v\n", err)
+			return
+		}
+		fmt.Printf("file: %v\n", file)
+	})
+}
