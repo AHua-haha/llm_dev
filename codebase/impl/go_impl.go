@@ -26,6 +26,28 @@ type CodeBase struct {
 	nodeCount        int
 }
 
+func (cb *CodeBase) debugExternalNode() {
+	print_op := func(root common.Node) bool {
+		switch node := root.(type) {
+		case *common.Dir:
+			fmt.Printf("node.Path: %v\n", node.Path)
+			for _, extNode := range node.ExternalNode {
+				fmt.Printf("extNode.Name(): %v\n", extNode.Name())
+			}
+			return true
+		case *common.File:
+			fmt.Printf("node.Path: %v\n", node.Path)
+			for _, extNode := range node.ExternalNode {
+				fmt.Printf("extNode.Name(): %v\n", extNode.Name())
+			}
+			return false
+		default:
+			return false
+		}
+	}
+	common.WalkNode(cb.rootNode, print_op)
+}
+
 func (cb *CodeBase) markExternal() bool {
 	for key, value := range cb.nodeByIdentifier {
 		if n, ok := value.(*symbolGo); ok {
@@ -191,6 +213,7 @@ func BuildCodeBase(root string) *CodeBase {
 	codebase.constructNode()
 	codebase.constructNodeMap()
 	codebase.markExternal()
+	codebase.debugExternalNode()
 	return codebase
 }
 
