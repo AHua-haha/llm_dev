@@ -2,55 +2,51 @@ package database
 
 import (
 	"context"
-	"log"
 	"os"
+
+	_ "llm_dev/utils"
+
+	"github.com/rs/zerolog/log"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var client *mongo.Client
-var database *mongo.Database
-var err error
+var uri string
 
 // InitDB initializes the MongoDB connection
 func InitDB() {
 	// Read MongoDB URI from environment variable
-	uri := os.Getenv("MONGO_URI")
+	uri = os.Getenv("MONGO_URI")
 	if uri == "" {
 		uri = "mongodb://localhost:27017" // Default URI
 	}
 
-	// Set client options
 	clientOptions := options.Client().ApplyURI(uri)
-
-	// Create a new client and connect to MongoDB
-	client, err = mongo.Connect(context.TODO(), clientOptions)
+	c, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
-		log.Fatalf("Error connecting to MongoDB: %v", err)
+		log.Fatal().Err(err).Str("url", uri).Msg("connect to mongodb fail")
 	}
 
-	// Wait for a connection to be established
-	err = client.Ping(context.TODO(), nil)
+	err = c.Ping(context.TODO(), nil)
 	if err != nil {
-		log.Fatalf("Error pinging MongoDB: %v", err)
+		log.Fatal().Err(err).Str("url", uri).Msg("ping mongodb fail")
 	}
-
-	// Select the database (replace "mydb" with your database name)
-	database = client.Database("mydb")
-
-	log.Println("Successfully connected to MongoDB!")
+	client = c
+	log.Info().Str("uri", uri).Msg("connect to mongodb")
 }
 
-// GetDB returns the database instance
-func GetDB() *mongo.Database {
-	return database
+func GetDBClient() *mongo.Client {
+	if client == nil {
+		log.Fatal().Msg("db client not init")
+	}
+	return client
 }
 
-// CloseDB gracefully closes the MongoDB connection
 func CloseDB() {
 	if err := client.Disconnect(context.TODO()); err != nil {
-		log.Fatalf("Error closing MongoDB connection: %v", err)
+		log.Fatal().Err(err).Msg("disconnect mongodb fail")
 	}
-	log.Println("MongoDB connection closed.")
+	log.Info().Str("uri", uri).Msg("disconnect to mongodb")
 }
