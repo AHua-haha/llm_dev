@@ -32,13 +32,13 @@ func (cb *CodeBase) debugExternalNode() {
 		case *common.Dir:
 			fmt.Printf("node.Path: %v\n", node.Path)
 			for _, extNode := range node.ExternalNode {
-				fmt.Printf("extNode.Name(): %v\n", extNode.Name())
+				fmt.Printf("extNode.Name(): %v\n", extNode.Key())
 			}
 			return true
 		case *common.File:
 			fmt.Printf("node.Path: %v\n", node.Path)
 			for _, extNode := range node.ExternalNode {
-				fmt.Printf("extNode.Name(): %v\n", extNode.Name())
+				fmt.Printf("extNode.Name(): %v\n", extNode.Key())
 			}
 			return false
 		default:
@@ -89,7 +89,8 @@ func (cb *CodeBase) markExternal() bool {
 				if err != nil {
 					return true
 				}
-				key := fmt.Sprintf("%s |%s", declare_file_path, obj.Name())
+				key := fmt.Sprintf("%s:%d:%d", declare_file_path, p.Line, p.Column)
+				fmt.Printf("key: %v\n", key)
 				node := cb.nodeByIdentifier[key]
 				if node == nil {
 					return true
@@ -111,11 +112,11 @@ func (cb *CodeBase) markExternal() bool {
 	return false
 }
 func (cb *CodeBase) addExternalNode(key string, symbol_node *symbolGo) {
-	idx := strings.IndexRune(key, '|')
+	idx := strings.IndexRune(key, ':')
 	if idx == -1 {
 		return
 	}
-	file := key[:idx-1]
+	file := key[:idx]
 
 	prefix := symbol_node.minPrefix
 	p := file
@@ -126,7 +127,7 @@ func (cb *CodeBase) addExternalNode(key string, symbol_node *symbolGo) {
 		node := cb.nodeByIdentifier[p]
 		if node != nil {
 			node.AddExternalNode(symbol_node)
-			log.Info().Str("node", p).Str("symbol", key).Msg("add external node")
+			log.Info().Str("node", p).Msgf("add external node %s", key)
 		}
 		p = filepath.Dir(p)
 	}
@@ -150,7 +151,7 @@ func (cb *CodeBase) buildMapOp(r common.Node) bool {
 		}
 		cb.tryInsertNode(relPath, node)
 		for _, symbol := range node.ChildNode {
-			key := fmt.Sprintf("%s |%s", relPath, symbol.Name())
+			key := fmt.Sprintf("%s:%s", relPath, symbol.Key())
 			cb.tryInsertNode(key, symbol)
 		}
 		return false
@@ -213,7 +214,7 @@ func BuildCodeBase(root string) *CodeBase {
 	codebase.constructNode()
 	codebase.constructNodeMap()
 	codebase.markExternal()
-	codebase.debugExternalNode()
+	// codebase.debugExternalNode()
 	return codebase
 }
 
@@ -237,6 +238,7 @@ func parseGoFile(path string, d fs.DirEntry) *common.File {
 
 type symbolGo struct {
 	name      string
+	identPos  tree_sitter.Point
 	body      pos
 	summary   pos
 	minPrefix string
@@ -251,8 +253,8 @@ func (s *symbolGo) AddChild(node common.Node) {
 	panic("not implemented") // TODO: Implement
 }
 
-func (s *symbolGo) Name() string {
-	return s.name
+func (s *symbolGo) Key() string {
+	return fmt.Sprintf("%d:%d", s.identPos.Row+1, s.identPos.Column+1)
 }
 func (s *symbolGo) ExtNode() []common.Node {
 	panic("not implemented") // TODO: Implement
@@ -295,6 +297,7 @@ func (fileops *fileSymExtractOps) nodeOps(root *tree_sitter.Node) bool {
 		return true
 	case "type_declaration":
 		identifier := root.Child(1).ChildByFieldName("name")
+		symbol.identPos = identifier.StartPosition()
 		symbol.name = fileops.getString(NewPos(identifier))
 		symbol.body = NewPos(root)
 		symbol.summary = NewPos(root)
@@ -302,6 +305,7 @@ func (fileops *fileSymExtractOps) nodeOps(root *tree_sitter.Node) bool {
 		return false
 	case "function_declaration":
 		name := root.ChildByFieldName("name")
+		symbol.identPos = name.StartPosition()
 		symbol.name = fileops.getString(NewPos(name))
 		symbol.body = NewPos(root)
 		symbol.summary = pos{
@@ -316,6 +320,7 @@ func (fileops *fileSymExtractOps) nodeOps(root *tree_sitter.Node) bool {
 		receiver_str := fileops.getString(NewPos(receiver))
 		name_str := fileops.getString(NewPos(name))
 
+		symbol.identPos = name.StartPosition()
 		symbol.name = fmt.Sprintf("%s::%s", receiver_str, name_str)
 		symbol.body = NewPos(root)
 		symbol.summary = pos{

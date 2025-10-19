@@ -202,15 +202,21 @@ type simpleNode struct {
 	childList []Node
 }
 
-func (n *simpleNode) Child() []Node {
-	return n.childList
+func (s *simpleNode) Child() []Node {
+	return s.childList
 }
 
-func (n *simpleNode) AddChild(node Node) {
-	n.childList = append(n.childList, node)
+func (s *simpleNode) AddChild(node Node) {
+	s.childList = append(s.childList, node)
 }
-func (n *simpleNode) Name() string {
-	return n.name
+func (s *simpleNode) Key() string {
+	return s.name
+}
+func (s *simpleNode) ExtNode() []Node {
+	panic("unimplemented")
+}
+func (s *simpleNode) AddExternalNode(node Node) {
+	panic("unimplemented")
 }
 
 func TestWalkDirGenTreeNode(t *testing.T) {

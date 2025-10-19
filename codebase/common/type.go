@@ -17,7 +17,7 @@ type Node interface {
 	AddChild(node Node)
 	ExtNode() []Node
 	AddExternalNode(n Node)
-	Name() string
+	Key() string
 }
 
 type File struct {
@@ -35,7 +35,7 @@ func (f *File) AddChild(node Node) {
 	f.ChildNode = append(f.ChildNode, node)
 }
 
-func (f *File) Name() string {
+func (f *File) Key() string {
 	return f.Path
 }
 func (f *File) ExtNode() []Node {
@@ -59,7 +59,7 @@ func (d *Dir) AddChild(node Node) {
 	d.ChildNode = append(d.ChildNode, node)
 }
 
-func (d *Dir) Name() string {
+func (d *Dir) Key() string {
 	return d.Path
 }
 func (d *Dir) ExtNode() []Node {
