@@ -1,0 +1,512 @@
+[90m21:09:18[0m [32mINF[0m [../../utils/logger.go:43] [1minit logger[0m
+=== RUN   TestBuildCodeBaseCtxOps_ExtractDefs
+=== RUN   TestBuildCodeBaseCtxOps_ExtractDefs/test_build_code_base_extract_definition
+def.keyword: package common
+def.keyword: import
+def.keyword: type AstNodeOps
+def.keyword: type FileOps
+def.keyword: type NodeOps
+def.keyword: type Node
+def.keyword: type File
+def.keyword: method File Child
+def.keyword: method File AddChild
+def.keyword: method File Key
+def.keyword: method File ExtNode
+def.keyword: method File AddExternalNode
+def.keyword: type Dir
+def.keyword: method Dir Child
+def.keyword: method Dir AddChild
+def.keyword: method Dir Key
+def.keyword: method Dir ExtNode
+def.keyword: method Dir AddExternalNode
+def.keyword: package common
+def.keyword: import
+def.keyword: function WalkAst
+def.keyword: function GenIgnoreOps
+def.keyword: function WalkDirGenNode
+def.keyword: function walkDir
+def.keyword: function WalkNode
+def.keyword: function CommonPrefix
+def.keyword: type FileFillter
+def.keyword: function NewFillter
+def.keyword: method FileFillter Keep
+def.keyword: method FileFillter FillterGitIgnore
+def.keyword: method FileFillter FillterSymlink
+def.keyword: method FileFillter FillterDir
+def.keyword: package common
+def.keyword: import
+def.keyword: function Test_walk
+def.keyword: type simpleNode
+def.keyword: method simpleNode Child
+def.keyword: method simpleNode AddChild
+def.keyword: method simpleNode Key
+def.keyword: method simpleNode ExtNode
+def.keyword: method simpleNode AddExternalNode
+def.keyword: function TestWalkDirGenTreeNode
+def.keyword: package impl
+def.keyword: import
+def.keyword: type CodeBase
+def.keyword: method CodeBase debugExternalNode
+def.keyword: method CodeBase markExternal
+def.keyword: method CodeBase addExternalNode
+def.keyword: method CodeBase buildMapOp
+def.keyword: method CodeBase constructNode
+def.keyword: method CodeBase constructNodeMap
+def.keyword: method CodeBase tryInsertNode
+def.keyword: method CodeBase createNodeOp
+def.keyword: function BuildCodeBase
+def.keyword: function parseGoFile
+def.keyword: type symbolGo
+def.keyword: method symbolGo Child
+def.keyword: method symbolGo AddChild
+def.keyword: method symbolGo Key
+def.keyword: method symbolGo ExtNode
+def.keyword: method symbolGo AddExternalNode
+def.keyword: type pos
+def.keyword: function NewPos
+def.keyword: type fileSymExtractOps
+def.keyword: method fileSymExtractOps getString
+def.keyword: method fileSymExtractOps nodeOps
+def.keyword: method fileSymExtractOps extractSymbol
+def.keyword: package impl
+def.keyword: import
+def.keyword: type ContentRange
+def.keyword: type TypeInfo
+def.keyword: type Definition
+def.keyword: method Definition addKeyword
+def.keyword: type BuildCodeBaseCtxOps
+def.keyword: method BuildCodeBaseCtxOps genAllUseInfo
+def.keyword: method BuildCodeBaseCtxOps ExtractDefs
+def.keyword: method BuildCodeBaseCtxOps genAllFiles
+def.keyword: method BuildCodeBaseCtxOps walkDirOp
+def.keyword: method BuildCodeBaseCtxOps genAllDefs
+def.keyword: method BuildCodeBaseCtxOps astNodeOp
+def.keyword: package impl
+def.keyword: import
+def.keyword: function Test_fileSymExtractOps_extractSymbol
+def.keyword: function Test_goTypeChecker
+def.keyword: function Test_parseProject
+def.keyword: function Test_WalkDir
+def.keyword: function TestBuildCodeBase
+def.keyword: function TestStringScan
+def.keyword: function TestBuildCodeBaseCtxOps_ExtractDefs
+def.keyword: package codebase
+def.keyword: import
+def.keyword: function travelTs
+def.keyword: package database
+def.keyword: import
+def.keyword: function InitDB
+def.keyword: function GetDBClient
+def.keyword: function CloseDB
+def.keyword: package database_test
+def.keyword: import
+def.keyword: function TestDBConnect
+def.keyword: package database
+def.keyword: type DataBase
+relPath: utils/logger.go
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/console.go:56:1
+obj.Name(): ConsoleWriter
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log.go:131:1
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/context.go:445:1
+obj.Name(): Caller
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/context.go:18:1
+obj.Name(): Logger
+p.String(): $GOROOT/src/os/getwd.go:26:1
+obj.Name(): Getwd
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/console.go:58:1
+obj.Name(): Out
+p.String(): $GOROOT/src/path/filepath/path.go:184:1
+obj.Name(): Rel
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/console.go:61:1
+obj.Name(): NoColor
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log.go:311:1
+obj.Name(): Level
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log.go:279:1
+obj.Name(): With
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/context.go:363:1
+obj.Name(): Timestamp
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log/log.go:66:1
+obj.Name(): Info
+p.String(): $GOROOT/src/os/file.go:73:1
+obj.Name(): Stdout
+p.String(): $GOROOT/src/fmt/print.go:237:1
+obj.Name(): Sprintf
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log/log.go:14:1
+obj.Name(): Logger
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:106:1
+obj.Name(): Msg
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/console.go:64:1
+obj.Name(): TimeFormat
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/console.go:86:1
+obj.Name(): FormatCaller
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log.go:246:1
+obj.Name(): New
+relPath: codebase/common/type.go
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:15:1
+obj.Name(): Node
+p.String(): $GOROOT/src/io/fs/fs.go:93:1
+obj.Name(): DirEntry
+relPath: codebase/common/utils.go
+p.String(): /root/go/pkg/mod/github.com/sabhiram/go-gitignore@v0.0.0-20210923224102-525f6e181f06/ignore.go:160:1
+obj.Name(): GitIgnore
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:167:1
+obj.Name(): ChildCount
+p.String(): $GOROOT/src/path/filepath/path.go:130:1
+obj.Name(): Join
+p.String(): $GOROOT/src/path/filepath/path.go:184:1
+obj.Name(): Rel
+p.String(): $GOROOT/src/io/fs/fs.go:104:1
+obj.Name(): Type
+p.String(): /root/go/pkg/mod/github.com/sabhiram/go-gitignore@v0.0.0-20210923224102-525f6e181f06/ignore.go:209:1
+obj.Name(): MatchesPath
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:390:1
+obj.Name(): Err
+p.String(): $GOROOT/src/io/fs/fs.go:100:1
+obj.Name(): IsDir
+p.String(): $GOROOT/src/os/dir.go:114:1
+obj.Name(): ReadDir
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:162:1
+obj.Name(): Child
+p.String(): /root/go/pkg/mod/github.com/sabhiram/go-gitignore@v0.0.0-20210923224102-525f6e181f06/ignore.go:182:1
+obj.Name(): CompileIgnoreFile
+p.String(): $GOROOT/src/io/fs/fs.go:93:1
+obj.Name(): DirEntry
+p.String(): $GOROOT/src/os/stat.go:11:1
+obj.Name(): Stat
+p.String(): $GOROOT/src/io/fs/readdir.go:79:1
+obj.Name(): FileInfoToDirEntry
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:17:2
+obj.Name(): AddChild
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:13:6
+obj.Name(): NodeOps
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:9:6
+obj.Name(): AstNodeOps
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:11:6
+obj.Name(): FileOps
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log/log.go:80:1
+obj.Name(): Error
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:15:6
+obj.Name(): Node
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:252:1
+obj.Name(): Str
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:106:1
+obj.Name(): Msg
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:15:1
+obj.Name(): Node
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:127:1
+obj.Name(): Msgf
+p.String(): $GOROOT/src/os/types.go:44:1
+p.String(): $GOROOT/src/io/fs/fs.go:97:1
+obj.Name(): Name
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:16:2
+obj.Name(): Child
+relPath: main.go
+p.String(): /root/workspace/llm_dev/utils/logger.go:12:5
+obj.Name(): MyInt
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:15:6
+obj.Name(): Node
+p.String(): $GOROOT/src/fmt/print.go:232:1
+obj.Name(): Printf
+p.String(): $GOROOT/src/fmt/print.go:313:1
+obj.Name(): Println
+relPath: codebase/parse.go
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/parser.go:62:1
+obj.Name(): NewParser
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/parser.go:80:1
+obj.Name(): SetLanguage
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/language.go:45:1
+obj.Name(): NewLanguage
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/tree-sitter-go@v0.25.0/bindings/go/binding.go:16:1
+obj.Name(): Language
+relPath: codebase/impl/go_impl.go
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:48:6
+obj.Name(): Dir
+p.String(): $GOROOT/src/path/filepath/path.go:184:1
+obj.Name(): Rel
+p.String(): $GOROOT/src/fmt/print.go:237:1
+obj.Name(): Sprintf
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:49:2
+obj.Name(): Path
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:106:1
+obj.Name(): Msg
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:252:1
+obj.Name(): Str
+p.String(): $GOROOT/src/path/filepath/path.go:465:1
+obj.Name(): Dir
+p.String(): $GOROOT/src/io/fs/fs.go:97:1
+obj.Name(): Name
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/parser.go:62:1
+obj.Name(): NewParser
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:95:1
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:524:1
+obj.Name(): TypesInfo
+p.String(): $GOROOT/src/io/fs/fs.go:93:1
+obj.Name(): DirEntry
+p.String(): $GOROOT/src/fmt/print.go:232:1
+obj.Name(): Printf
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:155:1
+obj.Name(): Mode
+p.String(): $GOROOT/src/go/ast/ast.go:291:1
+obj.Name(): Ident
+p.String(): $GOROOT/src/go/token/position.go:29:1
+obj.Name(): Line
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:101:6
+obj.Name(): CommonPrefix
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/point.go:15:1
+obj.Name(): Point
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:15:1
+obj.Name(): Node
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:192:1
+obj.Name(): ChildByFieldName
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:390:1
+obj.Name(): Err
+p.String(): $GOROOT/src/strings/strings.go:520:1
+obj.Name(): HasPrefix
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log/log.go:66:1
+obj.Name(): Info
+p.String(): $GOROOT/src/path/filepath/path.go:138:1
+obj.Name(): Ext
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/point.go:16:1
+obj.Name(): Row
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/point.go:17:1
+obj.Name(): Column
+p.String(): $GOROOT/src/os/file.go:867:1
+obj.Name(): ReadFile
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/parser.go:80:1
+obj.Name(): SetLanguage
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:89:1
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/tree.go:28:1
+obj.Name(): RootNode
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:20:2
+obj.Name(): Key
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:92:1
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:73:1
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:19:2
+obj.Name(): AddExternalNode
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:162:1
+obj.Name(): Child
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/tree-sitter-go@v0.25.0/bindings/go/binding.go:16:1
+obj.Name(): Language
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/parser.go:174:1
+obj.Name(): Parse
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:15:6
+obj.Name(): Node
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:24:2
+obj.Name(): Path
+p.String(): $GOROOT/src/go/token/position.go:30:1
+obj.Name(): Column
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:25:2
+obj.Name(): Ext
+p.String(): $GOROOT/src/strings/strings.go:127:1
+obj.Name(): IndexRune
+p.String(): $GOROOT/src/go/ast/ast.go:36:1
+obj.Name(): Node
+p.String(): $GOROOT/src/go/types/api.go:273:1
+obj.Name(): Uses
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:26:2
+obj.Name(): ChildNode
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:117:1
+obj.Name(): StartByte
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:127:1
+obj.Name(): Msgf
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:463:1
+obj.Name(): Int
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:171:1
+obj.Name(): Dir
+p.String(): $GOROOT/src/go/types/object.go:31:1
+obj.Name(): Pos
+p.String(): $GOROOT/src/go/token/position.go:27:1
+obj.Name(): Filename
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:51:6
+obj.Name(): WalkDirGenNode
+p.String(): $GOROOT/src/io/fs/fs.go:100:1
+obj.Name(): IsDir
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:153:1
+obj.Name(): Config
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:261:1
+obj.Name(): Load
+p.String(): $GOROOT/src/go/ast/walk.go:376:1
+obj.Name(): Inspect
+p.String(): $GOROOT/src/go/token/position.go:605:1
+obj.Name(): Position
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:25:6
+obj.Name(): GenIgnoreOps
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:48:1
+obj.Name(): Kind
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:51:2
+obj.Name(): ExternalNode
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:23:6
+obj.Name(): File
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:189:1
+obj.Name(): Fset
+p.String(): $GOROOT/src/go/token/position.go:437:1
+obj.Name(): NewFileSet
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:520:1
+obj.Name(): Syntax
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:143:1
+obj.Name(): StartPosition
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/language.go:45:1
+obj.Name(): NewLanguage
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:91:6
+obj.Name(): WalkNode
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log/log.go:80:1
+obj.Name(): Error
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:451:1
+obj.Name(): GoFiles
+p.String(): /root/workspace/llm_dev/codebase/common/type.go:27:2
+obj.Name(): ExternalNode
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:127:1
+obj.Name(): ByteRange
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:15:6
+obj.Name(): WalkAst
+relPath: codebase/impl/go_impl_db.go
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:192:1
+obj.Name(): ChildByFieldName
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:451:1
+obj.Name(): GoFiles
+p.String(): $GOROOT/src/go/ast/ast.go:36:1
+obj.Name(): Node
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:116:6
+obj.Name(): NewFillter
+p.String(): $GOROOT/src/go/token/position.go:27:1
+obj.Name(): Filename
+p.String(): $GOROOT/src/go/token/position.go:44:1
+obj.Name(): String
+p.String(): $GOROOT/src/go/types/object.go:439:1
+obj.Name(): Func
+p.String(): /root/go/pkg/mod/github.com/sabhiram/go-gitignore@v0.0.0-20210923224102-525f6e181f06/ignore.go:182:1
+obj.Name(): CompileIgnoreFile
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:73:1
+p.String(): $GOROOT/src/go/types/object.go:29:1
+obj.Name(): Object
+p.String(): $GOROOT/src/go/token/position.go:605:1
+obj.Name(): Position
+p.String(): $GOROOT/src/go/types/object.go:334:1
+obj.Name(): Var
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:92:1
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:89:1
+p.String(): $GOROOT/src/path/filepath/path.go:138:1
+obj.Name(): Ext
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:155:1
+obj.Name(): Mode
+p.String(): $GOROOT/src/go/token/position.go:437:1
+obj.Name(): NewFileSet
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log/log.go:80:1
+obj.Name(): Error
+p.String(): $GOROOT/src/go/ast/walk.go:376:1
+obj.Name(): Inspect
+p.String(): $GOROOT/src/io/fs/fs.go:93:1
+obj.Name(): DirEntry
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:153:1
+obj.Name(): Config
+p.String(): $GOROOT/src/fmt/print.go:232:1
+obj.Name(): Printf
+p.String(): $GOROOT/src/go/types/object.go:245:1
+obj.Name(): PkgName
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:128:23
+obj.Name(): FillterGitIgnore
+p.String(): $GOROOT/src/path/filepath/path.go:259:1
+obj.Name(): SkipDir
+p.String(): /root/go/pkg/mod/go.mongodb.org/mongo-driver@v1.17.4/mongo/database.go:34:1
+obj.Name(): Database
+p.String(): $GOROOT/src/path/filepath/path.go:184:1
+obj.Name(): Rel
+p.String(): $GOROOT/src/go/types/object.go:155:1
+obj.Name(): Name
+p.String(): $GOROOT/src/io/fs/fs.go:97:1
+obj.Name(): Name
+p.String(): $GOROOT/src/go/types/object.go:282:1
+obj.Name(): TypeName
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:127:1
+obj.Name(): Msgf
+p.String(): $GOROOT/src/path/filepath/path.go:395:1
+obj.Name(): WalkDir
+p.String(): $GOROOT/src/io/fs/fs.go:100:1
+obj.Name(): IsDir
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/language.go:45:1
+obj.Name(): NewLanguage
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/parser.go:174:1
+obj.Name(): Parse
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:117:1
+obj.Name(): StartByte
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:15:1
+obj.Name(): Node
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/tree.go:28:1
+obj.Name(): RootNode
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:524:1
+obj.Name(): TypesInfo
+p.String(): $GOROOT/src/go/types/api.go:273:1
+obj.Name(): Uses
+p.String(): $GOROOT/src/path/filepath/path.go:130:1
+obj.Name(): Join
+p.String(): /root/go/pkg/mod/github.com/sabhiram/go-gitignore@v0.0.0-20210923224102-525f6e181f06/ignore.go:160:1
+obj.Name(): GitIgnore
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:162:1
+obj.Name(): Child
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/parser.go:62:1
+obj.Name(): NewParser
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/tree-sitter-go@v0.25.0/bindings/go/binding.go:16:1
+obj.Name(): Language
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:15:6
+obj.Name(): WalkAst
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:189:1
+obj.Name(): Fset
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:171:1
+obj.Name(): Dir
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:520:1
+obj.Name(): Syntax
+p.String(): $GOROOT/src/go/ast/ast.go:291:1
+obj.Name(): Ident
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/parser.go:80:1
+obj.Name(): SetLanguage
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:95:1
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:106:1
+obj.Name(): Msg
+p.String(): $GOROOT/src/os/file.go:867:1
+obj.Name(): ReadFile
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:390:1
+obj.Name(): Err
+p.String(): $GOROOT/src/go/types/object.go:31:1
+obj.Name(): Pos
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:124:23
+obj.Name(): Keep
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:127:1
+obj.Name(): ByteRange
+p.String(): /root/go/pkg/mod/golang.org/x/tools@v0.38.0/go/packages/packages.go:261:1
+obj.Name(): Load
+p.String(): /root/workspace/llm_dev/codebase/common/utils.go:141:23
+obj.Name(): FillterSymlink
+p.String(): /root/go/pkg/mod/github.com/tree-sitter/go-tree-sitter@v0.25.0/node.go:48:1
+obj.Name(): Kind
+relPath: database/db_client.go
+p.String(): /root/go/pkg/mod/go.mongodb.org/mongo-driver@v1.17.4/mongo/client.go:365:1
+obj.Name(): Ping
+p.String(): /root/go/pkg/mod/go.mongodb.org/mongo-driver@v1.17.4/mongo/options/clientoptions.go:300:1
+obj.Name(): Client
+p.String(): /root/go/pkg/mod/go.mongodb.org/mongo-driver@v1.17.4/mongo/options/clientoptions.go:421:1
+obj.Name(): ApplyURI
+p.String(): /root/go/pkg/mod/go.mongodb.org/mongo-driver@v1.17.4/mongo/client.go:108:1
+obj.Name(): Connect
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log/log.go:88:1
+obj.Name(): Fatal
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:390:1
+obj.Name(): Err
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:252:1
+obj.Name(): Str
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/log/log.go:66:1
+obj.Name(): Info
+p.String(): /root/go/pkg/mod/go.mongodb.org/mongo-driver@v1.17.4/mongo/client.go:307:1
+obj.Name(): Disconnect
+p.String(): /root/go/pkg/mod/go.mongodb.org/mongo-driver@v1.17.4/mongo/client.go:55:1
+obj.Name(): Client
+p.String(): $GOROOT/src/os/env.go:101:1
+obj.Name(): Getenv
+p.String(): $GOROOT/src/context/context.go:223:1
+obj.Name(): TODO
+p.String(): /root/go/pkg/mod/github.com/rs/zerolog@v1.34.0/event.go:106:1
+obj.Name(): Msg
+relPath: database/db_ops.go
+--- PASS: TestBuildCodeBaseCtxOps_ExtractDefs (0.21s)
+    --- PASS: TestBuildCodeBaseCtxOps_ExtractDefs/test_build_code_base_extract_definition (0.21s)
+PASS
+ok  	llm_dev/codebase/impl	0.210s

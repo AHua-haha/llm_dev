@@ -9,6 +9,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var MyInt int
+
 func init() {
 	wd, err := os.Getwd()
 	if err != nil {

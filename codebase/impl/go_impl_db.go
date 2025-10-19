@@ -2,6 +2,9 @@ package impl
 
 import (
 	"fmt"
+	"go/ast"
+	"go/token"
+	"go/types"
 	"io/fs"
 	"llm_dev/codebase/common"
 	"os"
@@ -12,9 +15,15 @@ import (
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/tools/go/packages"
 )
 
 type ContentRange [2]uint
+
+type TypeInfo struct {
+	keyword []string
+	relfile string
+}
 
 type Definition struct {
 	keyword string
@@ -36,6 +45,64 @@ type BuildCodeBaseCtxOps struct {
 	db       *mongo.Database
 }
 
+func (op *BuildCodeBaseCtxOps) genAllUseInfo(outputChan chan TypeInfo) {
+	cfg := &packages.Config{
+		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedFiles,
+		Fset: token.NewFileSet(),
+		Dir:  op.rootPath,
+	}
+
+	pkgs, err := packages.Load(cfg, "./...")
+	if err != nil {
+		log.Error().Err(err).Msg("type check project fail")
+		return
+	}
+
+	for _, pkg := range pkgs {
+		for i, file := range pkg.Syntax {
+
+			typeMap := make(map[types.Object]struct{})
+			fileName := pkg.GoFiles[i]
+			relPath, _ := filepath.Rel(op.rootPath, fileName)
+			fmt.Printf("relPath: %v\n", relPath)
+			ast.Inspect(file, func(n ast.Node) bool {
+				ident, ok := n.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				obj, ok := pkg.TypesInfo.Uses[ident]
+				if obj == nil {
+					return true
+				}
+				pos := obj.Pos()
+				p := cfg.Fset.Position(pos)
+				if p.Filename == fileName || p.Filename == "" {
+					return true
+				}
+
+				typeMap[obj] = struct{}{}
+				return true
+			})
+			for obj, _ := range typeMap {
+				pos := obj.Pos()
+				p := cfg.Fset.Position(pos)
+				fmt.Printf("p.String(): %v\n", p.String())
+				switch obj := obj.(type) {
+				case *types.Var:
+					fmt.Printf("obj.Name(): %v\n", obj.Name())
+				case *types.PkgName:
+					fmt.Printf("obj.Name(): %v\n", obj.Name())
+				case *types.TypeName:
+					fmt.Printf("obj.Name(): %v\n", obj.Name())
+				case *types.Func:
+					fmt.Printf("obj.Name(): %v\n", obj.Name())
+				}
+			}
+		}
+	}
+	return
+}
+
 func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	defChan := make(chan Definition, 10)
 	fileChan := make(chan string, 10)
@@ -52,6 +119,7 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	for def := range defChan {
 		fmt.Printf("def.keyword: %v\n", def.keyword)
 	}
+	op.genAllUseInfo(nil)
 }
 func (op *BuildCodeBaseCtxOps) genAllFiles(outputChan chan string) {
 	ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
@@ -87,15 +155,19 @@ func (op *BuildCodeBaseCtxOps) genAllDefs(file string, outputChan chan Definitio
 		log.Error().Msgf("read file error %s", err)
 		return
 	}
+	relPath, err := filepath.Rel(op.rootPath, file)
+	if err != nil {
+		return
+	}
 	astNodeOp := func(root *tree_sitter.Node) bool {
-		return op.astNodeOp(root, data, outputChan)
+		return op.astNodeOp(root, relPath, data, outputChan)
 	}
 	parser := tree_sitter.NewParser()
 	parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
 	tree := parser.Parse(data, nil)
 	common.WalkAst(tree.RootNode(), astNodeOp)
 }
-func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, fileData []byte, outputChan chan Definition) bool {
+func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string, fileData []byte, outputChan chan Definition) bool {
 	getRange := func(n *tree_sitter.Node) ContentRange {
 		s, e := n.ByteRange()
 		return [2]uint{s, e}
@@ -105,6 +177,7 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, fileData []byte
 		return string(fileData[pos[0]:pos[1]])
 	}
 	var def Definition
+	def.relFile = relPath
 	Kind := root.Kind()
 	switch Kind {
 	case "source_file":
