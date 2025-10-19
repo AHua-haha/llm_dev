@@ -106,3 +106,54 @@ func CommonPrefix(s1, s2 string) string {
 	}
 	return s1[:i]
 }
+
+type FileFillter struct {
+	path string
+	d    fs.DirEntry
+	keep bool
+}
+
+func NewFillter(path string, d fs.DirEntry) *FileFillter {
+	return &FileFillter{
+		path: path,
+		d:    d,
+		keep: true,
+	}
+}
+
+func (f *FileFillter) Keep() bool {
+	return f.keep
+}
+
+func (f *FileFillter) FillterGitIgnore(root string, ig *ignore.GitIgnore) *FileFillter {
+	if !f.keep {
+		return f
+	}
+	relPath, err := filepath.Rel(root, f.path)
+	if err != nil {
+		return f
+	}
+	if ig.MatchesPath(relPath) {
+		f.keep = false
+	}
+	return f
+}
+func (f *FileFillter) FillterSymlink() *FileFillter {
+	if !f.keep {
+		return f
+	}
+	if f.d.Type()&os.ModeSymlink != 0 {
+		f.keep = false
+	}
+	return f
+}
+
+func (f *FileFillter) FillterDir() *FileFillter {
+	if !f.keep {
+		return f
+	}
+	if f.d.IsDir() {
+		f.keep = false
+	}
+	return f
+}

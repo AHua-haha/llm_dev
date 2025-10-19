@@ -204,7 +204,7 @@ func TestBuildCodeBase(t *testing.T) {
 		// TODO: Add test cases.
 		{
 			name: "test build go project",
-			root: "/home/ahua/workspace/llm/llm_dev",
+			root: "/root/workspace/llm_dev",
 		},
 	}
 	for _, tt := range tests {
@@ -226,4 +226,24 @@ func TestStringScan(t *testing.T) {
 		}
 		fmt.Printf("file: %v\n", file)
 	})
+}
+
+func TestBuildCodeBaseCtxOps_ExtractDefs(t *testing.T) {
+	tests := []struct {
+		name string // description of this test case
+		root string
+	}{
+		{
+			name: "test build code base extract definition",
+			root: "/root/workspace/llm_dev",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// TODO: construct the receiver type.
+			var op BuildCodeBaseCtxOps
+			op.rootPath = tt.root
+			op.ExtractDefs()
+		})
+	}
 }

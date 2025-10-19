@@ -13,6 +13,8 @@ import (
 	_ "llm_dev/utils"
 
 	"github.com/rs/zerolog/log"
+	ignore "github.com/sabhiram/go-gitignore"
+	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/tools/go/packages"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
@@ -346,4 +348,130 @@ func (fileops *fileSymExtractOps) extractSymbol() {
 	parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
 	tree := parser.Parse(data, nil)
 	common.WalkAst(tree.RootNode(), fileops.nodeOps)
+}
+
+type ContentRange [2]uint
+
+type Definition struct {
+	keyword string
+	relFile string
+	summary ContentRange
+	content ContentRange
+}
+
+func (def *Definition) addKeyword(value string) {
+	if def.keyword == "" {
+		def.keyword += value
+	} else {
+		def.keyword += " " + value
+	}
+}
+
+type BuildCodeBaseCtxOps struct {
+	rootPath string
+	db       *mongo.Database
+}
+
+func (op *BuildCodeBaseCtxOps) ExtractDefs() {
+	defChan := make(chan Definition, 10)
+	fileChan := make(chan string, 10)
+	go func() {
+		op.genAllFiles(fileChan)
+		close(fileChan)
+	}()
+	go func() {
+		for file := range fileChan {
+			op.genAllDefs(file, defChan)
+		}
+		close(defChan)
+	}()
+	for def := range defChan {
+		fmt.Printf("def.keyword: %v\n", def.keyword)
+	}
+}
+func (op *BuildCodeBaseCtxOps) genAllFiles(outputChan chan string) {
+	ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
+	if err != nil {
+		log.Error().Msgf("compile ignore failed")
+		return
+	}
+	walkDirFunc := func(path string, d fs.DirEntry, err error) error {
+		return op.walkDirOp(path, d, err, ig, outputChan)
+	}
+	filepath.WalkDir(op.rootPath, walkDirFunc)
+}
+func (op *BuildCodeBaseCtxOps) walkDirOp(path string, d fs.DirEntry, err error, ig *ignore.GitIgnore, outputChan chan string) error {
+	keep := common.NewFillter(path, d).
+		FillterSymlink().
+		FillterGitIgnore(op.rootPath, ig).Keep()
+	if !keep {
+		return filepath.SkipDir
+	}
+	if d.IsDir() {
+		return nil
+	}
+	ext := filepath.Ext(d.Name())
+	if ext == ".go" {
+		outputChan <- path
+	}
+	return nil
+}
+
+func (op *BuildCodeBaseCtxOps) genAllDefs(file string, outputChan chan Definition) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		log.Error().Msgf("read file error %s", err)
+		return
+	}
+	astNodeOp := func(root *tree_sitter.Node) bool {
+		return op.astNodeOp(root, data, outputChan)
+	}
+	parser := tree_sitter.NewParser()
+	parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
+	tree := parser.Parse(data, nil)
+	common.WalkAst(tree.RootNode(), astNodeOp)
+}
+func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, fileData []byte, outputChan chan Definition) bool {
+	getRange := func(n *tree_sitter.Node) ContentRange {
+		s, e := n.ByteRange()
+		return [2]uint{s, e}
+	}
+	getString := func(n *tree_sitter.Node) string {
+		pos := getRange(n)
+		return string(fileData[pos[0]:pos[1]])
+	}
+	var def Definition
+	Kind := root.Kind()
+	switch Kind {
+	case "source_file":
+		return true
+	case "type_declaration":
+		identifier := root.Child(1).ChildByFieldName("name")
+		def.content = getRange(root)
+		def.summary = getRange(root)
+		def.addKeyword("type")
+		def.addKeyword(getString(identifier))
+		outputChan <- def
+		return false
+	case "function_declaration":
+		name := root.ChildByFieldName("name")
+		def.content = getRange(root)
+		def.summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
+		def.addKeyword("function")
+		def.addKeyword(getString(name))
+		outputChan <- def
+		return false
+	case "method_declaration":
+		receiver := root.ChildByFieldName("receiver").Child(1).ChildByFieldName("type").Child(1)
+		name := root.ChildByFieldName("name")
+		def.content = getRange(root)
+		def.summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
+		def.addKeyword("method")
+		def.addKeyword(getString(receiver))
+		def.addKeyword(getString(name))
+		outputChan <- def
+		return false
+	default:
+		return false
+	}
 }
