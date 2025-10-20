@@ -64,16 +64,18 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo(outputChan chan TypeInfo) {
 		Fset: token.NewFileSet(),
 		Dir:  op.rootPath,
 	}
+	moduleName, err := common.GetModulePath(filepath.Join(op.rootPath, "go.mod"))
+	if err != nil {
+		return
+	}
 
 	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
 		log.Error().Err(err).Msg("type check project fail")
 		return
 	}
-
 	for _, pkg := range pkgs {
 		for i, file := range pkg.Syntax {
-
 			typeMap := make(map[types.Object]struct{})
 			fileName := pkg.GoFiles[i]
 			relPath, _ := filepath.Rel(op.rootPath, fileName)
@@ -100,10 +102,17 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo(outputChan chan TypeInfo) {
 				var typeInfo TypeInfo
 				pos := obj.Pos()
 				p := cfg.Fset.Position(pos)
-				declare_file, _ := filepath.Rel(op.rootPath, p.Filename)
-				typeInfo.DeclareFile = declare_file
 				typeInfo.UseFile = relPath
 				typeInfo.Identifier = obj.Name()
+				pkgPath := obj.Pkg().Path()
+				if strings.HasPrefix(pkgPath, moduleName) {
+					declare_file, _ := filepath.Rel(op.rootPath, p.Filename)
+					typeInfo.DeclareFile = declare_file
+					typeInfo.addKeyword("self pkg")
+				} else {
+					typeInfo.addKeyword("dependency pkg")
+					typeInfo.addKeyword(pkgPath)
+				}
 				switch obj := obj.(type) {
 				case *types.Var:
 					typeInfo.addKeyword("var")
@@ -153,7 +162,7 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 		fmt.Printf("def.keyword: %v\n", def.Keyword)
 		defArray = append(defArray, def)
 	}
-	op.insertDefs(defArray)
+	// op.insertDefs(defArray)
 	useTypeInfoChan := make(chan TypeInfo, 10)
 	go func() {
 		op.genAllUseInfo(useTypeInfoChan)
@@ -161,10 +170,10 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	}()
 	useTypeInfoArray := []TypeInfo{}
 	for info := range useTypeInfoChan {
-		fmt.Printf("info: %v\n", info)
+		fmt.Printf("%v\n", info)
 		useTypeInfoArray = append(useTypeInfoArray, info)
 	}
-	op.insertUsedTypeInfo(useTypeInfoArray)
+	// op.insertUsedTypeInfo(useTypeInfoArray)
 }
 func (op *BuildCodeBaseCtxOps) genAllFiles(outputChan chan string) {
 	ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
@@ -227,6 +236,32 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 	switch Kind {
 	case "source_file":
 		return true
+	case "var_declaration":
+		var_spec := root.Child(1)
+		name := var_spec.ChildByFieldName("name")
+		typeName := var_spec.ChildByFieldName("type")
+		def.Identifier = getString(name)
+		def.Content = getRange(root)
+		def.Summary = getRange(root)
+		def.AddKeyword("var")
+		def.AddKeyword(getString(name))
+		def.AddKeyword(getString(typeName))
+		outputChan <- def
+		return false
+	case "short_var_declaration":
+		exp_list := root.ChildByFieldName("left")
+		count := exp_list.ChildCount()
+		def.Content = getRange(root)
+		def.Summary = getRange(root)
+		def.AddKeyword("var")
+		for i := range count {
+			if i%2 == 1 {
+				continue
+			}
+			def.AddKeyword(getString(exp_list.Child(i)))
+		}
+		outputChan <- def
+		return false
 	case "package_clause":
 		identifier := root.Child(1)
 		def.Identifier = getString(identifier)

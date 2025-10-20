@@ -1,10 +1,13 @@
 package common
 
 import (
+	"bufio"
+	"fmt"
 	"io/fs"
 	_ "llm_dev/utils"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 
@@ -156,4 +159,24 @@ func (f *FileFilter) FilterDir() *FileFilter {
 		f.keep = false
 	}
 	return f
+}
+
+func GetModulePath(goModPath string) (string, error) {
+	f, err := os.Open(goModPath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module ")), nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	return "", fmt.Errorf("module directive not found in %s", goModPath)
 }
