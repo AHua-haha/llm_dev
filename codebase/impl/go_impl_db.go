@@ -9,6 +9,7 @@ import (
 	"llm_dev/codebase/common"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 	ignore "github.com/sabhiram/go-gitignore"
@@ -21,8 +22,13 @@ import (
 type ContentRange [2]uint
 
 type TypeInfo struct {
-	keyword []string
-	relfile string
+	keyword     []string
+	declareFile string
+	usedFile    string
+}
+
+func (info *TypeInfo) addKeyword(value string) {
+	info.keyword = append(info.keyword, value)
 }
 
 type Definition struct {
@@ -32,7 +38,7 @@ type Definition struct {
 	content ContentRange
 }
 
-func (def *Definition) addKeyword(value string) {
+func (def *Definition) AddKeyword(value string) {
 	if def.keyword == "" {
 		def.keyword += value
 	} else {
@@ -43,6 +49,14 @@ func (def *Definition) addKeyword(value string) {
 type BuildCodeBaseCtxOps struct {
 	rootPath string
 	db       *mongo.Database
+}
+
+func (op *BuildCodeBaseCtxOps) markExternal() {
+	usedTypeInfoChan := make(chan TypeInfo, 10)
+	go func() {
+		op.genAllUseInfo(usedTypeInfoChan)
+		close(usedTypeInfoChan)
+	}()
 }
 
 func (op *BuildCodeBaseCtxOps) genAllUseInfo(outputChan chan TypeInfo) {
@@ -84,23 +98,41 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo(outputChan chan TypeInfo) {
 				return true
 			})
 			for obj, _ := range typeMap {
+				var typeInfo TypeInfo
 				pos := obj.Pos()
 				p := cfg.Fset.Position(pos)
-				fmt.Printf("p.String(): %v\n", p.String())
+				declare_file, _ := filepath.Rel(op.rootPath, p.Filename)
+				typeInfo.declareFile = declare_file
+				typeInfo.usedFile = relPath
 				switch obj := obj.(type) {
 				case *types.Var:
-					fmt.Printf("obj.Name(): %v\n", obj.Name())
+					typeInfo.addKeyword("var")
+					typeInfo.addKeyword(obj.Name())
 				case *types.PkgName:
-					fmt.Printf("obj.Name(): %v\n", obj.Name())
+					typeInfo.addKeyword("package")
+					typeInfo.addKeyword(obj.Name())
 				case *types.TypeName:
-					fmt.Printf("obj.Name(): %v\n", obj.Name())
+					typeInfo.addKeyword("type")
+					typeInfo.addKeyword(obj.Name())
 				case *types.Func:
-					fmt.Printf("obj.Name(): %v\n", obj.Name())
+					rece := obj.Signature().Recv()
+					if rece != nil {
+						typeInfo.addKeyword("method")
+						typeName := rece.Type().String()
+						idx := strings.LastIndex(typeName, ".")
+						shortName := typeName[idx+1:]
+						typeInfo.addKeyword(shortName)
+					} else {
+						typeInfo.addKeyword("function")
+					}
+					typeInfo.addKeyword(obj.Name())
+				default:
+					continue
 				}
+				outputChan <- typeInfo
 			}
 		}
 	}
-	return
 }
 
 func (op *BuildCodeBaseCtxOps) ExtractDefs() {
@@ -186,30 +218,30 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 		identifier := root.Child(1)
 		def.content = getRange(root)
 		def.summary = getRange(root)
-		def.addKeyword("package")
-		def.addKeyword(getString(identifier))
+		def.AddKeyword("package")
+		def.AddKeyword(getString(identifier))
 		outputChan <- def
 		return false
 	case "import_declaration":
 		def.content = getRange(root)
 		def.summary = getRange(root)
-		def.addKeyword("import")
+		def.AddKeyword("import")
 		outputChan <- def
 		return false
 	case "type_declaration":
 		identifier := root.Child(1).ChildByFieldName("name")
 		def.content = getRange(root)
 		def.summary = getRange(root)
-		def.addKeyword("type")
-		def.addKeyword(getString(identifier))
+		def.AddKeyword("type")
+		def.AddKeyword(getString(identifier))
 		outputChan <- def
 		return false
 	case "function_declaration":
 		name := root.ChildByFieldName("name")
 		def.content = getRange(root)
 		def.summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
-		def.addKeyword("function")
-		def.addKeyword(getString(name))
+		def.AddKeyword("function")
+		def.AddKeyword(getString(name))
 		outputChan <- def
 		return false
 	case "method_declaration":
@@ -217,9 +249,9 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 		name := root.ChildByFieldName("name")
 		def.content = getRange(root)
 		def.summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
-		def.addKeyword("method")
-		def.addKeyword(getString(receiver))
-		def.addKeyword(getString(name))
+		def.AddKeyword("method")
+		def.AddKeyword(getString(receiver))
+		def.AddKeyword(getString(name))
 		outputChan <- def
 		return false
 	default:
