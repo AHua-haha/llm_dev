@@ -161,9 +161,9 @@ func (op *BuildCodeBaseCtxOps) genAllFiles(outputChan chan string) {
 	filepath.WalkDir(op.rootPath, walkDirFunc)
 }
 func (op *BuildCodeBaseCtxOps) walkDirOp(path string, d fs.DirEntry, err error, ig *ignore.GitIgnore, outputChan chan string) error {
-	keep := common.NewFillter(path, d).
-		FillterSymlink().
-		FillterGitIgnore(op.rootPath, ig).Keep()
+	keep := common.NewFilter(path, d).
+		FilterSymlink().
+		FilterGitIgnore(op.rootPath, ig).Keep()
 	if !keep {
 		return filepath.SkipDir
 	}

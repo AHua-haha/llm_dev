@@ -11,6 +11,7 @@ import (
 	"llm_dev/database"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	ignore "github.com/sabhiram/go-gitignore"
@@ -261,7 +262,9 @@ func TestInsertSearchDefs(t *testing.T) {
 		collection := client.Database("llm_dev").Collection("Defs")
 		defs := [10]Definition{}
 		for i := range 10 {
-			defs[i].AddKeyword(fmt.Sprintf("hello me %d", i))
+			defs[i].AddKeyword("dddoda")
+			defs[i].AddKeyword("me")
+			defs[i].AddKeyword(strconv.Itoa(i))
 		}
 		array := [10]interface{}{}
 		for i := range 10 {
@@ -272,7 +275,7 @@ func TestInsertSearchDefs(t *testing.T) {
 	})
 }
 
-func TestIndex(t *testing.T) {
+func TestTextIndex(t *testing.T) {
 	t.Run("test create index and search", func(t *testing.T) {
 		database.InitDB()
 		defer database.CloseDB()
@@ -293,6 +296,30 @@ func TestIndex(t *testing.T) {
 		findOptions := options.Find().
 			SetSort(bson.D{{Key: "score", Value: bson.M{"$meta": "textScore"}}})
 		cursor, err := collection.Find(context.TODO(), filter, findOptions)
+		if err != nil {
+			fmt.Printf("err: %v\n", err)
+		}
+
+		for cursor.Next(context.TODO()) {
+			var result bson.M
+			if err := cursor.Decode(&result); err != nil {
+				fmt.Printf("err: %v\n", err)
+			}
+			fmt.Printf("%v\n", result)
+		}
+	})
+}
+
+func TestArrayIndex(t *testing.T) {
+	t.Run("test create array index and search", func(t *testing.T) {
+		database.InitDB()
+		defer database.CloseDB()
+		client := database.GetDBClient()
+		collection := client.Database("llm_dev").Collection("Defs")
+
+		filter := bson.M{"keyword": bson.M{"$in": []string{"2", "4"}}}
+
+		cursor, err := collection.Find(context.TODO(), filter)
 		if err != nil {
 			fmt.Printf("err: %v\n", err)
 		}

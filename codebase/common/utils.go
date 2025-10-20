@@ -107,25 +107,25 @@ func CommonPrefix(s1, s2 string) string {
 	return s1[:i]
 }
 
-type FileFillter struct {
+type FileFilter struct {
 	path string
 	d    fs.DirEntry
 	keep bool
 }
 
-func NewFillter(path string, d fs.DirEntry) *FileFillter {
-	return &FileFillter{
+func NewFilter(path string, d fs.DirEntry) *FileFilter {
+	return &FileFilter{
 		path: path,
 		d:    d,
 		keep: true,
 	}
 }
 
-func (f *FileFillter) Keep() bool {
+func (f *FileFilter) Keep() bool {
 	return f.keep
 }
 
-func (f *FileFillter) FillterGitIgnore(root string, ig *ignore.GitIgnore) *FileFillter {
+func (f *FileFilter) FilterGitIgnore(root string, ig *ignore.GitIgnore) *FileFilter {
 	if !f.keep {
 		return f
 	}
@@ -138,7 +138,7 @@ func (f *FileFillter) FillterGitIgnore(root string, ig *ignore.GitIgnore) *FileF
 	}
 	return f
 }
-func (f *FileFillter) FillterSymlink() *FileFillter {
+func (f *FileFilter) FilterSymlink() *FileFilter {
 	if !f.keep {
 		return f
 	}
@@ -148,7 +148,7 @@ func (f *FileFillter) FillterSymlink() *FileFillter {
 	return f
 }
 
-func (f *FileFillter) FillterDir() *FileFillter {
+func (f *FileFilter) FilterDir() *FileFilter {
 	if !f.keep {
 		return f
 	}
