@@ -22,28 +22,24 @@ import (
 type ContentRange [2]uint
 
 type TypeInfo struct {
-	keyword     []string
-	declareFile string
-	usedFile    string
+	Keyword     []string
+	DeclareFile string
+	UseFile     string
 }
 
 func (info *TypeInfo) addKeyword(value string) {
-	info.keyword = append(info.keyword, value)
+	info.Keyword = append(info.Keyword, value)
 }
 
 type Definition struct {
-	keyword string
-	relFile string
-	summary ContentRange
-	content ContentRange
+	Keyword []string
+	RelFile string
+	Summary ContentRange
+	Content ContentRange
 }
 
 func (def *Definition) AddKeyword(value string) {
-	if def.keyword == "" {
-		def.keyword += value
-	} else {
-		def.keyword += " " + value
-	}
+	def.Keyword = append(def.Keyword, value)
 }
 
 type BuildCodeBaseCtxOps struct {
@@ -102,8 +98,8 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo(outputChan chan TypeInfo) {
 				pos := obj.Pos()
 				p := cfg.Fset.Position(pos)
 				declare_file, _ := filepath.Rel(op.rootPath, p.Filename)
-				typeInfo.declareFile = declare_file
-				typeInfo.usedFile = relPath
+				typeInfo.DeclareFile = declare_file
+				typeInfo.UseFile = relPath
 				switch obj := obj.(type) {
 				case *types.Var:
 					typeInfo.addKeyword("var")
@@ -149,7 +145,7 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 		close(defChan)
 	}()
 	for def := range defChan {
-		fmt.Printf("def.keyword: %v\n", def.keyword)
+		fmt.Printf("def.keyword: %v\n", def.Keyword)
 	}
 	op.genAllUseInfo(nil)
 }
@@ -209,37 +205,37 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 		return string(fileData[pos[0]:pos[1]])
 	}
 	var def Definition
-	def.relFile = relPath
+	def.RelFile = relPath
 	Kind := root.Kind()
 	switch Kind {
 	case "source_file":
 		return true
 	case "package_clause":
 		identifier := root.Child(1)
-		def.content = getRange(root)
-		def.summary = getRange(root)
+		def.Content = getRange(root)
+		def.Summary = getRange(root)
 		def.AddKeyword("package")
 		def.AddKeyword(getString(identifier))
 		outputChan <- def
 		return false
 	case "import_declaration":
-		def.content = getRange(root)
-		def.summary = getRange(root)
+		def.Content = getRange(root)
+		def.Summary = getRange(root)
 		def.AddKeyword("import")
 		outputChan <- def
 		return false
 	case "type_declaration":
 		identifier := root.Child(1).ChildByFieldName("name")
-		def.content = getRange(root)
-		def.summary = getRange(root)
+		def.Content = getRange(root)
+		def.Summary = getRange(root)
 		def.AddKeyword("type")
 		def.AddKeyword(getString(identifier))
 		outputChan <- def
 		return false
 	case "function_declaration":
 		name := root.ChildByFieldName("name")
-		def.content = getRange(root)
-		def.summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
+		def.Content = getRange(root)
+		def.Summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
 		def.AddKeyword("function")
 		def.AddKeyword(getString(name))
 		outputChan <- def
@@ -247,8 +243,8 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 	case "method_declaration":
 		receiver := root.ChildByFieldName("receiver").Child(1).ChildByFieldName("type").Child(1)
 		name := root.ChildByFieldName("name")
-		def.content = getRange(root)
-		def.summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
+		def.Content = getRange(root)
+		def.Summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
 		def.AddKeyword("method")
 		def.AddKeyword(getString(receiver))
 		def.AddKeyword(getString(name))

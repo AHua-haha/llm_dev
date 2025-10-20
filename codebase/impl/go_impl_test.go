@@ -1,17 +1,22 @@
 package impl
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
+	"llm_dev/database"
 	"os"
 	"path/filepath"
 	"testing"
 
 	ignore "github.com/sabhiram/go-gitignore"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -246,4 +251,58 @@ func TestBuildCodeBaseCtxOps_ExtractDefs(t *testing.T) {
 			op.ExtractDefs()
 		})
 	}
+}
+
+func TestInsertSearchDefs(t *testing.T) {
+	t.Run("test insert and search definition", func(t *testing.T) {
+		database.InitDB()
+		defer database.CloseDB()
+		client := database.GetDBClient()
+		collection := client.Database("llm_dev").Collection("Defs")
+		defs := [10]Definition{}
+		for i := range 10 {
+			defs[i].AddKeyword(fmt.Sprintf("hello me %d", i))
+		}
+		array := [10]interface{}{}
+		for i := range 10 {
+			array[i] = defs[i]
+		}
+		collection.InsertMany(context.TODO(), array[:])
+
+	})
+}
+
+func TestIndex(t *testing.T) {
+	t.Run("test create index and search", func(t *testing.T) {
+		database.InitDB()
+		defer database.CloseDB()
+		client := database.GetDBClient()
+		collection := client.Database("llm_dev").Collection("Defs")
+
+		indexModel := mongo.IndexModel{
+			Keys: bson.D{{Key: "keyword", Value: "text"}}, // text index on 'content'
+		}
+
+		_, err := collection.Indexes().CreateOne(context.TODO(), indexModel)
+		if err != nil {
+			fmt.Printf("err: %v\n", err)
+		}
+		filter := bson.M{
+			"$text": bson.M{"$search": "hello AND 4 5 6"}, // Text search filter
+		}
+		findOptions := options.Find().
+			SetSort(bson.D{{Key: "score", Value: bson.M{"$meta": "textScore"}}})
+		cursor, err := collection.Find(context.TODO(), filter, findOptions)
+		if err != nil {
+			fmt.Printf("err: %v\n", err)
+		}
+
+		for cursor.Next(context.TODO()) {
+			var result bson.M
+			if err := cursor.Decode(&result); err != nil {
+				fmt.Printf("err: %v\n", err)
+			}
+			fmt.Printf("%v\n", result)
+		}
+	})
 }
