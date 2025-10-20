@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -22,6 +23,7 @@ import (
 type ContentRange [2]uint
 
 type TypeInfo struct {
+	Identifier  string
 	Keyword     []string
 	DeclareFile string
 	UseFile     string
@@ -32,10 +34,11 @@ func (info *TypeInfo) addKeyword(value string) {
 }
 
 type Definition struct {
-	Keyword []string
-	RelFile string
-	Summary ContentRange
-	Content ContentRange
+	Identifier string
+	Keyword    []string
+	RelFile    string
+	Summary    ContentRange
+	Content    ContentRange
 }
 
 func (def *Definition) AddKeyword(value string) {
@@ -100,6 +103,7 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo(outputChan chan TypeInfo) {
 				declare_file, _ := filepath.Rel(op.rootPath, p.Filename)
 				typeInfo.DeclareFile = declare_file
 				typeInfo.UseFile = relPath
+				typeInfo.Identifier = obj.Name()
 				switch obj := obj.(type) {
 				case *types.Var:
 					typeInfo.addKeyword("var")
@@ -144,10 +148,23 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 		}
 		close(defChan)
 	}()
+	defArray := []Definition{}
 	for def := range defChan {
 		fmt.Printf("def.keyword: %v\n", def.Keyword)
+		defArray = append(defArray, def)
 	}
-	op.genAllUseInfo(nil)
+	op.insertDefs(defArray)
+	useTypeInfoChan := make(chan TypeInfo, 10)
+	go func() {
+		op.genAllUseInfo(useTypeInfoChan)
+		close(useTypeInfoChan)
+	}()
+	useTypeInfoArray := []TypeInfo{}
+	for info := range useTypeInfoChan {
+		fmt.Printf("info: %v\n", info)
+		useTypeInfoArray = append(useTypeInfoArray, info)
+	}
+	op.insertUsedTypeInfo(useTypeInfoArray)
 }
 func (op *BuildCodeBaseCtxOps) genAllFiles(outputChan chan string) {
 	ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
@@ -212,6 +229,7 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 		return true
 	case "package_clause":
 		identifier := root.Child(1)
+		def.Identifier = getString(identifier)
 		def.Content = getRange(root)
 		def.Summary = getRange(root)
 		def.AddKeyword("package")
@@ -226,6 +244,7 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 		return false
 	case "type_declaration":
 		identifier := root.Child(1).ChildByFieldName("name")
+		def.Identifier = getString(identifier)
 		def.Content = getRange(root)
 		def.Summary = getRange(root)
 		def.AddKeyword("type")
@@ -234,6 +253,7 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 		return false
 	case "function_declaration":
 		name := root.ChildByFieldName("name")
+		def.Identifier = getString(name)
 		def.Content = getRange(root)
 		def.Summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
 		def.AddKeyword("function")
@@ -243,6 +263,7 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 	case "method_declaration":
 		receiver := root.ChildByFieldName("receiver").Child(1).ChildByFieldName("type").Child(1)
 		name := root.ChildByFieldName("name")
+		def.Identifier = getString(name)
 		def.Content = getRange(root)
 		def.Summary = [2]uint{root.StartByte(), root.ChildByFieldName("body").StartByte()}
 		def.AddKeyword("method")
@@ -253,4 +274,20 @@ func (op *BuildCodeBaseCtxOps) astNodeOp(root *tree_sitter.Node, relPath string,
 	default:
 		return false
 	}
+}
+func ToAnySlice[T any](input []T) []any {
+	result := make([]any, len(input))
+	for i, v := range input {
+		result[i] = v
+	}
+	return result
+}
+func (op *BuildCodeBaseCtxOps) insertUsedTypeInfo(array []TypeInfo) {
+	anySlice := ToAnySlice(array)
+	op.db.Collection("Uses").InsertMany(context.TODO(), anySlice)
+}
+
+func (op *BuildCodeBaseCtxOps) insertDefs(array []Definition) {
+	anySlice := ToAnySlice(array)
+	op.db.Collection("Defs").InsertMany(context.TODO(), anySlice)
 }
