@@ -8,6 +8,7 @@ import (
 	"go/types"
 	"io/fs"
 	"llm_dev/codebase/common"
+	"llm_dev/database"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	ignore "github.com/sabhiram/go-gitignore"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/tools/go/packages"
 )
@@ -23,6 +25,7 @@ import (
 type ContentRange [2]uint
 
 type TypeInfo struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
 	Identifier  string
 	Keyword     []string
 	DeclareFile string
@@ -34,11 +37,13 @@ func (info *TypeInfo) addKeyword(value string) {
 }
 
 type Definition struct {
+	ID         primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
 	Identifier string
 	Keyword    []string
 	RelFile    string
 	Summary    ContentRange
 	Content    ContentRange
+	minPrefix  string
 }
 
 func (def *Definition) AddKeyword(value string) {
@@ -160,6 +165,7 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	defArray := []Definition{}
 	for def := range defChan {
 		fmt.Printf("def.keyword: %v\n", def.Keyword)
+		def.minPrefix = def.RelFile
 		defArray = append(defArray, def)
 	}
 	// op.insertDefs(defArray)
@@ -325,4 +331,33 @@ func (op *BuildCodeBaseCtxOps) insertUsedTypeInfo(array []TypeInfo) {
 func (op *BuildCodeBaseCtxOps) insertDefs(array []Definition) {
 	anySlice := ToAnySlice(array)
 	op.db.Collection("Defs").InsertMany(context.TODO(), anySlice)
+}
+func (op *BuildCodeBaseCtxOps) findDefs(relfile *string, identifier *string, keyword []string) []Definition {
+	builder := database.NewFilter()
+	if relfile != nil {
+		builder.AddKV("relfile", relfile)
+	}
+	if identifier != nil {
+		builder.AddKV("identifier", identifier)
+	}
+	if len(keyword) != 0 {
+		keywordFilter := database.NewFilterKV(database.All, keyword)
+		builder.AddFilter("keyword", keywordFilter)
+	}
+	filter := builder.Build()
+	collection := op.db.Collection("Defs")
+	cursor, err := collection.Find(context.TODO(), builder.Build())
+	if err != nil {
+		log.Error().Err(err).Msgf("run fild failed, filter\n%v", filter)
+		return nil
+	}
+	defer cursor.Close(context.TODO())
+	result := []Definition{}
+	err = cursor.All(context.TODO(), &result)
+	if err != nil {
+		log.Error().Err(err).Msg("parse result to []Definition failed")
+		return nil
+	}
+	log.Info().Int("res size", len(result)).Msgf("run find ok, filter\n%v", filter)
+	return result
 }
