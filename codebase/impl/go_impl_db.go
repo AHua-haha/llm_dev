@@ -452,7 +452,7 @@ func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
 			log.Error().Int("size", size).Any("useinfo keyword", useInfo.Keyword).Msg("definition found more than one")
 		}
 		def := res[0]
-		minPrefix := common.CommonPrefix(def.MinPrefix, useInfo.UseFile)
+		minPrefix := common.CommonRootDir(def.MinPrefix, useInfo.UseFile)
 		if minPrefix == def.MinPrefix {
 			continue
 		}
@@ -474,7 +474,7 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 		log.Error().Msgf("compile ignore failed")
 		return
 	}
-	fileMap := make(map[string]FileDirInfo)
+	fileMap := make(map[string]*FileDirInfo)
 	walkDirFunc := func(path string, d fs.DirEntry, err error) error {
 		relpath, _ := filepath.Rel(op.rootPath, path)
 		keep := common.NewFilter(path, d).
@@ -483,7 +483,7 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 		if !keep {
 			return filepath.SkipDir
 		}
-		info := FileDirInfo{
+		info := &FileDirInfo{
 			RelPath: relpath,
 		}
 		if d.IsDir() {
@@ -501,11 +501,30 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 	filepath.WalkDir(op.rootPath, walkDirFunc)
 	filter := bson.M{
 		database.Expr: bson.M{
-			database.Ne: []string{"minprefix", "relpath"},
+			database.Ne: []string{"$minprefix", "$relfile"},
 		},
 	}
 	result := op.findDefs(filter)
 	for _, def := range result {
-		fmt.Printf("%v %v\n", def.Keyword, def.MinPrefix)
+		// fmt.Printf("%v %v\n", def.Keyword, def.MinPrefix)
+		p := def.RelFile
+		root := def.MinPrefix
+		if def.MinPrefix == "" {
+			root = "."
+		}
+		fmt.Printf("%s| %s|\n", root, p)
+		for {
+			if strings.HasPrefix(root, p) {
+				break
+			}
+			fileMap[p].UsedDefs = append(fileMap[p].UsedDefs, def)
+			p = filepath.Dir(p)
+		}
+	}
+	for k, v := range fileMap {
+		fmt.Printf("f/d %s\n", k)
+		for _, def := range v.UsedDefs {
+			fmt.Printf("%v\n", def.Keyword)
+		}
 	}
 }

@@ -180,3 +180,30 @@ func GetModulePath(goModPath string) (string, error) {
 	}
 	return "", fmt.Errorf("module directive not found in %s", goModPath)
 }
+
+func CommonRootDir(path1, path2 string) string {
+	// Clean and make absolute (optional, but recommended)
+	p1 := filepath.Clean(path1)
+	p2 := filepath.Clean(path2)
+
+	// Split by OS-specific separator
+	parts1 := strings.Split(p1, string(filepath.Separator))
+	parts2 := strings.Split(p2, string(filepath.Separator))
+
+	var commonParts []string
+
+	// Find common prefix parts
+	for i := 0; i < len(parts1) && i < len(parts2); i++ {
+		if parts1[i] == parts2[i] {
+			commonParts = append(commonParts, parts1[i])
+		} else {
+			break
+		}
+	}
+
+	if len(commonParts) == 0 {
+		return ""
+	}
+
+	return filepath.Join(commonParts...)
+}
