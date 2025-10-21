@@ -17,6 +17,7 @@ import (
 	ignore "github.com/sabhiram/go-gitignore"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/tools/go/packages"
@@ -25,11 +26,29 @@ import (
 type ContentRange [2]uint
 
 type TypeInfo struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
-	Identifier  string
-	Keyword     []string
-	DeclareFile string
-	UseFile     string
+	ID           primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
+	Identifier   string
+	Keyword      []string
+	DeclareFile  string
+	UseFile      string
+	IsDependency bool
+}
+
+func (info *TypeInfo) genIDFilter() bson.M {
+	builder := database.NewFilter()
+	builder.AddKV("_id", info.ID)
+	return builder.Build()
+}
+func (info *TypeInfo) genFilterForDef() bson.M {
+	var file *string
+	var identifier *string
+	if info.DeclareFile != "" {
+		file = &info.DeclareFile
+	}
+	if info.Identifier != "" {
+		identifier = &info.Identifier
+	}
+	return genDefFilter(file, identifier, info.Keyword)
 }
 
 func (info *TypeInfo) addKeyword(value string) {
@@ -43,7 +62,54 @@ type Definition struct {
 	RelFile    string
 	Summary    ContentRange
 	Content    ContentRange
-	minPrefix  string
+	MinPrefix  string
+}
+
+func genDefFilter(relfile *string, identifier *string, keyword []string) bson.M {
+	builder := database.NewFilter()
+	if relfile != nil {
+		builder.AddKV("relfile", relfile)
+	}
+	if identifier != nil {
+		builder.AddKV("identifier", identifier)
+	}
+	if len(keyword) != 0 {
+		keywordFilter := database.NewFilterKV(database.All, keyword)
+		builder.AddFilter("keyword", keywordFilter)
+	}
+	filter := builder.Build()
+	return filter
+}
+func (def *Definition) getValue(key string) any {
+	switch key {
+	case "id":
+		return def.ID
+	case "identifier":
+		return def.Identifier
+	case "keyword":
+		return def.Keyword
+	case "relfile":
+		return def.RelFile
+	case "minprefix":
+		return def.MinPrefix
+	default:
+		return nil
+	}
+}
+
+func (def *Definition) genUpdate(keys ...string) bson.M {
+	kv := bson.M{}
+	for _, key := range keys {
+		value := def.getValue(key)
+		kv[key] = value
+	}
+	return bson.M{"$set": kv}
+}
+
+func (def *Definition) genIDFilter() bson.M {
+	builder := database.NewFilter()
+	builder.AddKV("_id", def.ID)
+	return builder.Build()
 }
 
 func (def *Definition) AddKeyword(value string) {
@@ -113,10 +179,10 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo(outputChan chan TypeInfo) {
 				if strings.HasPrefix(pkgPath, moduleName) {
 					declare_file, _ := filepath.Rel(op.rootPath, p.Filename)
 					typeInfo.DeclareFile = declare_file
-					typeInfo.addKeyword("self pkg")
+					typeInfo.IsDependency = false
 				} else {
-					typeInfo.addKeyword("dependency pkg")
 					typeInfo.addKeyword(pkgPath)
+					typeInfo.IsDependency = true
 				}
 				switch obj := obj.(type) {
 				case *types.Var:
@@ -164,8 +230,8 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	}()
 	defArray := []Definition{}
 	for def := range defChan {
-		fmt.Printf("def.keyword: %v\n", def.Keyword)
-		def.minPrefix = def.RelFile
+		// fmt.Printf("def.keyword: %v\n", def.Keyword)
+		def.MinPrefix = def.RelFile
 		defArray = append(defArray, def)
 	}
 	// op.insertDefs(defArray)
@@ -176,10 +242,11 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	}()
 	useTypeInfoArray := []TypeInfo{}
 	for info := range useTypeInfoChan {
-		fmt.Printf("%v\n", info)
+		// fmt.Printf("%v\n", info)
 		useTypeInfoArray = append(useTypeInfoArray, info)
 	}
 	// op.insertUsedTypeInfo(useTypeInfoArray)
+	op.setMinPrefix(useTypeInfoArray)
 }
 func (op *BuildCodeBaseCtxOps) genAllFiles(outputChan chan string) {
 	ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
@@ -332,23 +399,13 @@ func (op *BuildCodeBaseCtxOps) insertDefs(array []Definition) {
 	anySlice := ToAnySlice(array)
 	op.db.Collection("Defs").InsertMany(context.TODO(), anySlice)
 }
+
 func (op *BuildCodeBaseCtxOps) findDefs(relfile *string, identifier *string, keyword []string) []Definition {
-	builder := database.NewFilter()
-	if relfile != nil {
-		builder.AddKV("relfile", relfile)
-	}
-	if identifier != nil {
-		builder.AddKV("identifier", identifier)
-	}
-	if len(keyword) != 0 {
-		keywordFilter := database.NewFilterKV(database.All, keyword)
-		builder.AddFilter("keyword", keywordFilter)
-	}
-	filter := builder.Build()
+	filter := genDefFilter(relfile, identifier, keyword)
 	collection := op.db.Collection("Defs")
-	cursor, err := collection.Find(context.TODO(), builder.Build())
+	cursor, err := collection.Find(context.TODO(), filter)
 	if err != nil {
-		log.Error().Err(err).Msgf("run fild failed, filter\n%v", filter)
+		log.Error().Err(err).Any("filter", filter).Msgf("run fild failed")
 		return nil
 	}
 	defer cursor.Close(context.TODO())
@@ -358,6 +415,35 @@ func (op *BuildCodeBaseCtxOps) findDefs(relfile *string, identifier *string, key
 		log.Error().Err(err).Msg("parse result to []Definition failed")
 		return nil
 	}
-	log.Info().Int("res size", len(result)).Msgf("run find ok, filter\n%v", filter)
+	// log.Info().Int("res size", len(result)).Msgf("run find ok, filter\n")
 	return result
+}
+
+func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
+	for _, useInfo := range usedTypeInfos {
+		if useInfo.IsDependency {
+			continue
+		}
+		var identifier *string = nil
+		if useInfo.Identifier != "" {
+			identifier = &useInfo.Identifier
+		}
+		res := op.findDefs(&useInfo.DeclareFile, identifier, useInfo.Keyword)
+		size := len(res)
+		if size == 0 {
+			log.Error().Any("used type info", useInfo).Msg("definition not found")
+			continue
+		} else if size > 1 {
+			log.Error().Int("size", size).Any("used type info", useInfo).Msg("definition found more than one")
+		}
+		def := res[0]
+		// update := def.genUpdate("minprefix")
+		fmt.Printf("%v || %v\n", useInfo.Keyword, def.Keyword)
+		// fmt.Printf("update: %v\n", update)
+		// collection := op.db.Collection("Defs")
+		// _, err := collection.UpdateByID(context.TODO(), def.ID, update)
+		// if err != nil {
+		// 	log.Error().Err(err).Any("def", def).Msg("update definition failed")
+		// }
+	}
 }
