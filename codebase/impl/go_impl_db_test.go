@@ -19,10 +19,21 @@ func TestBuildCodeBaseCtxOps_findDefs(t *testing.T) {
 		want       []Definition
 	}{
 		// TODO: Add test cases.
+		// {
+		// 	name:       "find by relfile",
+		// 	relfile:    strPtr("main.go"),
+		// 	identifier: nil,
+		// },
+		// {
+		// 	name:       "find by keyword",
+		// 	relfile:    nil,
+		// 	identifier: nil,
+		// 	keyword:    []string{"BuildCodeBaseCtxOps"},
+		// },
 		{
-			name:       "find by relfile",
-			relfile:    strPtr("main.go"),
-			identifier: nil,
+			name:       "find by identifier",
+			relfile:    nil,
+			identifier: strPtr("BuildCodeBaseCtxOps"),
 		},
 	}
 	database.InitDB()
