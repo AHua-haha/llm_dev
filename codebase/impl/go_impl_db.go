@@ -25,6 +25,11 @@ import (
 
 type ContentRange [2]uint
 
+type FileInfo struct {
+	path string
+	d    fs.DirEntry
+}
+
 type TypeInfo struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
 	Identifier   string
@@ -235,14 +240,21 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo(outputChan chan TypeInfo) {
 func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	defChan := make(chan Definition, 10)
 	defArray := []Definition{}
-	fileChan := make(chan string, 10)
+	fileChan := make(chan FileInfo, 10)
 	go func() {
-		op.genAllFiles(fileChan)
+		op.walkProject(fileChan)
 		close(fileChan)
 	}()
 	go func() {
 		for file := range fileChan {
-			op.genAllDefs(file, defChan)
+			if file.d.IsDir() {
+				continue
+			}
+			ext := filepath.Ext(file.d.Name())
+			if ext != ".go" {
+				continue
+			}
+			op.genAllDefs(file.path, defChan)
 		}
 		close(defChan)
 	}()
@@ -250,7 +262,7 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 		def.MinPrefix = def.RelFile
 		defArray = append(defArray, def)
 	}
-	// op.insertDefs(defArray)
+	op.insertDefs(defArray)
 	useTypeInfoChan := make(chan TypeInfo, 10)
 	useTypeInfoArray := []TypeInfo{}
 	go func() {
@@ -263,33 +275,6 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	// op.insertUsedTypeInfo(useTypeInfoArray)
 	op.setMinPrefix(useTypeInfoArray)
 	op.genFileMap()
-}
-func (op *BuildCodeBaseCtxOps) genAllFiles(outputChan chan string) {
-	ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
-	if err != nil {
-		log.Error().Msgf("compile ignore failed")
-		return
-	}
-	walkDirFunc := func(path string, d fs.DirEntry, err error) error {
-		return op.walkDirOp(path, d, err, ig, outputChan)
-	}
-	filepath.WalkDir(op.rootPath, walkDirFunc)
-}
-func (op *BuildCodeBaseCtxOps) walkDirOp(path string, d fs.DirEntry, err error, ig *ignore.GitIgnore, outputChan chan string) error {
-	keep := common.NewFilter(path, d).
-		FilterSymlink().
-		FilterGitIgnore(op.rootPath, ig).Keep()
-	if !keep {
-		return filepath.SkipDir
-	}
-	if d.IsDir() {
-		return nil
-	}
-	ext := filepath.Ext(d.Name())
-	if ext == ".go" {
-		outputChan <- path
-	}
-	return nil
 }
 
 func (op *BuildCodeBaseCtxOps) genAllDefs(file string, outputChan chan Definition) {
@@ -467,38 +452,51 @@ func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
 		}
 	}
 }
-
-func (op *BuildCodeBaseCtxOps) genFileMap() {
+func (op *BuildCodeBaseCtxOps) walkProject(outputChan chan FileInfo) {
 	ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
 	if err != nil {
 		log.Error().Msgf("compile ignore failed")
 		return
 	}
-	fileMap := make(map[string]*FileDirInfo)
 	walkDirFunc := func(path string, d fs.DirEntry, err error) error {
-		relpath, _ := filepath.Rel(op.rootPath, path)
 		keep := common.NewFilter(path, d).
 			FilterSymlink().
 			FilterGitIgnore(op.rootPath, ig).Keep()
 		if !keep {
 			return filepath.SkipDir
 		}
-		info := &FileDirInfo{
-			RelPath: relpath,
+		outputChan <- FileInfo{
+			path: path,
+			d:    d,
 		}
-		if d.IsDir() {
-			info.IsDir = true
-		} else {
-			info.IsDir = false
-			ext := filepath.Ext(d.Name())
-			if ext != ".go" {
-				return nil
-			}
-		}
-		fileMap[relpath] = info
 		return nil
 	}
 	filepath.WalkDir(op.rootPath, walkDirFunc)
+}
+
+func (op *BuildCodeBaseCtxOps) genFileMap() {
+	fileChan := make(chan FileInfo, 10)
+	go func() {
+		op.walkProject(fileChan)
+		close(fileChan)
+	}()
+	fileMap := make(map[string]*FileDirInfo)
+	for fileInfo := range fileChan {
+		relpath, _ := filepath.Rel(op.rootPath, fileInfo.path)
+		info := &FileDirInfo{
+			RelPath: relpath,
+		}
+		if fileInfo.d.IsDir() {
+			info.IsDir = true
+		} else {
+			info.IsDir = false
+			ext := filepath.Ext(fileInfo.d.Name())
+			if ext != ".go" {
+				continue
+			}
+		}
+		fileMap[relpath] = info
+	}
 	filter := bson.M{
 		database.Expr: bson.M{
 			database.Ne: []string{"$minprefix", "$relfile"},
