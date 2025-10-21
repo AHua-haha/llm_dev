@@ -512,7 +512,6 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 		if def.MinPrefix == "" {
 			root = "."
 		}
-		fmt.Printf("%s| %s|\n", root, p)
 		for {
 			if strings.HasPrefix(root, p) {
 				break
