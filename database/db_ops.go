@@ -6,11 +6,13 @@ type DataBase struct {
 }
 
 const (
-	All string = "$all"
-	In  string = "$in"
-	Nin string = "$nin"
-	Gt  string = "$gt"
-	Eq  string = "$eq"
+	All  string = "$all"
+	In   string = "$in"
+	Nin  string = "$nin"
+	Gt   string = "$gt"
+	Eq   string = "$eq"
+	Ne   string = "$ne"
+	Expr string = "$expr"
 )
 
 type MongoDBFilterBuilder struct {
