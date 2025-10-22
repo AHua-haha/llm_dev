@@ -25,11 +25,6 @@ import (
 
 type ContentRange [2]uint
 
-type FileInfo struct {
-	path string
-	d    fs.DirEntry
-}
-
 type TypeInfo struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
 	Identifier   string
@@ -133,6 +128,62 @@ type BuildCodeBaseCtxOps struct {
 	db       *mongo.Database
 }
 
+func (op *BuildCodeBaseCtxOps) ExtractDefs() {
+	op.genAllDefs()
+	// op.insertDefs(defArray)
+	op.genAllUseInfo()
+	// op.insertUsedTypeInfo(usedTypeArray)
+	// op.setMinPrefix(usedTypeArray)
+	// op.genFileMap()
+}
+func (op *BuildCodeBaseCtxOps) genFileMap() {
+	fileChan := op.walkProjectFileTree()
+	fileMap := make(map[string]*FileDirInfo)
+	for fileInfo := range fileChan {
+		relpath, _ := filepath.Rel(op.rootPath, fileInfo.path)
+		info := &FileDirInfo{
+			RelPath: relpath,
+		}
+		if fileInfo.d.IsDir() {
+			info.IsDir = true
+		} else {
+			info.IsDir = false
+			ext := filepath.Ext(fileInfo.d.Name())
+			if ext != ".go" {
+				continue
+			}
+		}
+		fileMap[relpath] = info
+	}
+	filter := bson.M{
+		database.Expr: bson.M{
+			database.Ne: []string{"$minprefix", "$relfile"},
+		},
+	}
+	result := op.findDefs(filter)
+	for _, def := range result {
+		// fmt.Printf("%v %v\n", def.Keyword, def.MinPrefix)
+		p := def.RelFile
+		root := def.MinPrefix
+		if def.MinPrefix == "" {
+			root = "."
+		}
+		for {
+			if strings.HasPrefix(root, p) {
+				break
+			}
+			fileMap[p].UsedDefs = append(fileMap[p].UsedDefs, def)
+			p = filepath.Dir(p)
+		}
+	}
+	for k, v := range fileMap {
+		fmt.Printf("f/d %s\n", k)
+		for _, def := range v.UsedDefs {
+			fmt.Printf("%v\n", def.Keyword)
+		}
+	}
+}
+
 func (op *BuildCodeBaseCtxOps) genAllUseInfo() []TypeInfo {
 	moduleName, err := common.GetModulePath(filepath.Join(op.rootPath, "go.mod"))
 	if err != nil {
@@ -192,15 +243,6 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo() []TypeInfo {
 		res = append(res, typeInfo)
 	}
 	return res
-}
-
-func (op *BuildCodeBaseCtxOps) ExtractDefs() {
-	op.genAllDefs()
-	// op.insertDefs(defArray)
-	op.genAllUseInfo()
-	// op.insertUsedTypeInfo(usedTypeArray)
-	// op.setMinPrefix(usedTypeArray)
-	// op.genFileMap()
 }
 
 func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
@@ -284,40 +326,6 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 	}
 	return defs
 }
-func ToAnySlice[T any](input []T) []any {
-	result := make([]any, len(input))
-	for i, v := range input {
-		result[i] = v
-	}
-	return result
-}
-func (op *BuildCodeBaseCtxOps) insertUsedTypeInfo(array []TypeInfo) {
-	anySlice := ToAnySlice(array)
-	op.db.Collection("Uses").InsertMany(context.TODO(), anySlice)
-}
-
-func (op *BuildCodeBaseCtxOps) insertDefs(array []Definition) {
-	anySlice := ToAnySlice(array)
-	op.db.Collection("Defs").InsertMany(context.TODO(), anySlice)
-}
-
-func (op *BuildCodeBaseCtxOps) findDefs(filter bson.M) []Definition {
-	collection := op.db.Collection("Defs")
-	cursor, err := collection.Find(context.TODO(), filter)
-	if err != nil {
-		log.Error().Err(err).Any("filter", filter).Msgf("run fild failed")
-		return nil
-	}
-	defer cursor.Close(context.TODO())
-	result := []Definition{}
-	err = cursor.All(context.TODO(), &result)
-	if err != nil {
-		log.Error().Err(err).Msg("parse result to []Definition failed")
-		return nil
-	}
-	return result
-}
-
 func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
 	for _, useInfo := range usedTypeInfos {
 		if useInfo.IsDependency {
@@ -351,6 +359,39 @@ func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
 			log.Info().Any("def keyword", def.Keyword).Msg("update def minprefix")
 		}
 	}
+}
+func ToAnySlice[T any](input []T) []any {
+	result := make([]any, len(input))
+	for i, v := range input {
+		result[i] = v
+	}
+	return result
+}
+func (op *BuildCodeBaseCtxOps) insertUsedTypeInfo(array []TypeInfo) {
+	anySlice := ToAnySlice(array)
+	op.db.Collection("Uses").InsertMany(context.TODO(), anySlice)
+}
+
+func (op *BuildCodeBaseCtxOps) insertDefs(array []Definition) {
+	anySlice := ToAnySlice(array)
+	op.db.Collection("Defs").InsertMany(context.TODO(), anySlice)
+}
+
+func (op *BuildCodeBaseCtxOps) findDefs(filter bson.M) []Definition {
+	collection := op.db.Collection("Defs")
+	cursor, err := collection.Find(context.TODO(), filter)
+	if err != nil {
+		log.Error().Err(err).Any("filter", filter).Msgf("run fild failed")
+		return nil
+	}
+	defer cursor.Close(context.TODO())
+	result := []Definition{}
+	err = cursor.All(context.TODO(), &result)
+	if err != nil {
+		log.Error().Err(err).Msg("parse result to []Definition failed")
+		return nil
+	}
+	return result
 }
 
 type typeAstCtx struct {
@@ -453,8 +494,14 @@ func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan StaticAstCtx {
 	}()
 	return outputChan
 }
-func (op *BuildCodeBaseCtxOps) walkProjectFileTree() <-chan FileInfo {
-	outputChan := make(chan FileInfo, 10)
+
+type fileTreeCtx struct {
+	path string
+	d    fs.DirEntry
+}
+
+func (op *BuildCodeBaseCtxOps) walkProjectFileTree() <-chan fileTreeCtx {
+	outputChan := make(chan fileTreeCtx, 10)
 	go func() {
 		ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
 		if err != nil {
@@ -468,7 +515,7 @@ func (op *BuildCodeBaseCtxOps) walkProjectFileTree() <-chan FileInfo {
 			if !keep {
 				return filepath.SkipDir
 			}
-			outputChan <- FileInfo{
+			outputChan <- fileTreeCtx{
 				path: path,
 				d:    d,
 			}
@@ -478,52 +525,4 @@ func (op *BuildCodeBaseCtxOps) walkProjectFileTree() <-chan FileInfo {
 		close(outputChan)
 	}()
 	return outputChan
-}
-
-func (op *BuildCodeBaseCtxOps) genFileMap() {
-	fileChan := op.walkProjectFileTree()
-	fileMap := make(map[string]*FileDirInfo)
-	for fileInfo := range fileChan {
-		relpath, _ := filepath.Rel(op.rootPath, fileInfo.path)
-		info := &FileDirInfo{
-			RelPath: relpath,
-		}
-		if fileInfo.d.IsDir() {
-			info.IsDir = true
-		} else {
-			info.IsDir = false
-			ext := filepath.Ext(fileInfo.d.Name())
-			if ext != ".go" {
-				continue
-			}
-		}
-		fileMap[relpath] = info
-	}
-	filter := bson.M{
-		database.Expr: bson.M{
-			database.Ne: []string{"$minprefix", "$relfile"},
-		},
-	}
-	result := op.findDefs(filter)
-	for _, def := range result {
-		// fmt.Printf("%v %v\n", def.Keyword, def.MinPrefix)
-		p := def.RelFile
-		root := def.MinPrefix
-		if def.MinPrefix == "" {
-			root = "."
-		}
-		for {
-			if strings.HasPrefix(root, p) {
-				break
-			}
-			fileMap[p].UsedDefs = append(fileMap[p].UsedDefs, def)
-			p = filepath.Dir(p)
-		}
-	}
-	for k, v := range fileMap {
-		fmt.Printf("f/d %s\n", k)
-		for _, def := range v.UsedDefs {
-			fmt.Printf("%v\n", def.Keyword)
-		}
-	}
 }
