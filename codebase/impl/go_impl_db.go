@@ -11,6 +11,7 @@ import (
 	"llm_dev/database"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -123,6 +124,19 @@ type FileDirInfo struct {
 	UsedDefs []Definition
 }
 
+func (fd *FileDirInfo) getDefByFile() map[string][]Definition {
+	res := make(map[string][]Definition)
+	for _, usedDef := range fd.UsedDefs {
+		res[usedDef.RelFile] = append(res[usedDef.RelFile], usedDef)
+	}
+	for _, v := range res {
+		sort.Slice(v, func(i, j int) bool {
+			return v[i].Summary[0] < v[j].Summary[0]
+		})
+	}
+	return res
+}
+
 type BuildCodeBaseCtxOps struct {
 	rootPath string
 	db       *mongo.Database
@@ -130,6 +144,7 @@ type BuildCodeBaseCtxOps struct {
 
 func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	op.genAllDefs()
+	// defArray := op.genAllDefs()
 	// op.insertDefs(defArray)
 	usedTypeInfoArray := op.genAllUseInfo()
 	// op.insertUsedTypeInfo(usedTypeArray)
@@ -162,7 +177,6 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 	}
 	result := op.findDefs(filter)
 	for _, def := range result {
-		fmt.Printf("%v %v\n", def.Keyword, def.MinPrefix)
 		p := def.RelFile
 		root := def.MinPrefix
 		if def.MinPrefix == "" {
@@ -177,9 +191,22 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 		}
 	}
 	for k, v := range fileMap {
-		fmt.Printf("f/d %s\n", k)
-		for _, def := range v.UsedDefs {
-			fmt.Printf("%v\n", def.Keyword)
+		fmt.Printf("# %s\n", k)
+		usedTypeByFile := v.getDefByFile()
+		for relpath, defs := range usedTypeByFile {
+			path := filepath.Join(op.rootPath, relpath)
+			data, _ := os.ReadFile(path)
+			fmt.Printf("## %s\n", relpath)
+			for _, def := range defs {
+				summaryRange := def.Summary
+				size := uint(len(data))
+				s := summaryRange[0]
+				e := summaryRange[1]
+				if s < size && e < size {
+					str := string(data[s:e])
+					fmt.Printf("%s\n", str)
+				}
+			}
 		}
 	}
 }
