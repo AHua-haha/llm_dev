@@ -59,10 +59,10 @@ type Definition struct {
 	ID         primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
 	Identifier string
 	Keyword    []string
-	RelFile    string
 	Summary    ContentRange
 	Content    ContentRange
 	MinPrefix  string
+	RelFile    string
 }
 
 func genDefFilter(relfile *string, identifier *string, keyword []string) bson.M {
@@ -131,10 +131,10 @@ type BuildCodeBaseCtxOps struct {
 func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	op.genAllDefs()
 	// op.insertDefs(defArray)
-	op.genAllUseInfo()
+	usedTypeInfoArray := op.genAllUseInfo()
 	// op.insertUsedTypeInfo(usedTypeArray)
-	// op.setMinPrefix(usedTypeArray)
-	// op.genFileMap()
+	op.setMinPrefix(usedTypeInfoArray)
+	op.genFileMap()
 }
 func (op *BuildCodeBaseCtxOps) genFileMap() {
 	fileChan := op.walkProjectFileTree()
@@ -162,7 +162,7 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 	}
 	result := op.findDefs(filter)
 	for _, def := range result {
-		// fmt.Printf("%v %v\n", def.Keyword, def.MinPrefix)
+		fmt.Printf("%v %v\n", def.Keyword, def.MinPrefix)
 		p := def.RelFile
 		root := def.MinPrefix
 		if def.MinPrefix == "" {
@@ -260,6 +260,7 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 		relPath, _ := filepath.Rel(op.rootPath, ctx.path)
 		var def Definition
 		def.RelFile = relPath
+		def.MinPrefix = relPath
 		node := ctx.astNode
 		Kind := node.Kind()
 		switch Kind {
