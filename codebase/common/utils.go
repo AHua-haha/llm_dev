@@ -51,12 +51,14 @@ func (q *TSQuery) Query(root *tree_sitter.Node, data []byte) []QueryRes {
 		if match == nil {
 			break
 		}
+		fmt.Printf("match.PatternIndex: %v\n", match.PatternIndex)
 
 		for _, cap := range match.Captures {
 			queryRes := QueryRes{
 				node:        &cap.Node,
 				captureName: q.cpatureName[cap.Index],
 			}
+			fmt.Printf("queryRes.captureName: %v\n", queryRes.captureName)
 			res = append(res, queryRes)
 		}
 	}

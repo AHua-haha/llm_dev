@@ -272,6 +272,10 @@ func TestNewTSQuery(t *testing.T) {
 	t.Run("test TS query", func(t *testing.T) {
 		querySrc := `
 (var_spec) @var
+(function_declaration
+	name: (identifier) @function.name
+	body: (block) @function.block
+)
 `
 		parser := tree_sitter.NewParser()
 		defer parser.Close()
@@ -291,5 +295,19 @@ func TestNewTSQuery(t *testing.T) {
 			fmt.Printf("elem.captureName: %v\n", elem.captureName)
 			fmt.Printf("elem.node.Utf8Text([]byte(src_code)):\n %v\n", elem.node.Utf8Text([]byte(src_code)))
 		}
+	})
+}
+
+func TestClose(t *testing.T) {
+	t.Run("test TS tree cloase", func(t *testing.T) {
+		parser := tree_sitter.NewParser()
+		defer parser.Close()
+		lang := tree_sitter.NewLanguage(golang.Language())
+		parser.SetLanguage(lang)
+
+		tree := parser.Parse([]byte(src_code), nil)
+		tree.Clone()
+		root := tree.RootNode().Child(3)
+		fmt.Printf("root.Utf8Text([]byte(src_code)): \n%v\n", root.Utf8Text([]byte(src_code)))
 	})
 }
