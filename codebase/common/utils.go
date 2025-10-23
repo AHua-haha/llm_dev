@@ -15,6 +15,54 @@ import (
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
+type TSQuery struct {
+	query       *tree_sitter.Query
+	cpatureName []string
+}
+
+type QueryRes struct {
+	node        *tree_sitter.Node
+	captureName string
+}
+
+func NewTSQuery(queryStr string, lang *tree_sitter.Language) (*TSQuery, error) {
+	query, err := tree_sitter.NewQuery(lang, queryStr)
+	if err != nil {
+		return nil, err
+	}
+	return &TSQuery{
+		query:       query,
+		cpatureName: query.CaptureNames(),
+	}, nil
+}
+
+func (q *TSQuery) Close() {
+	q.query.Close()
+}
+
+func (q *TSQuery) Query(root *tree_sitter.Node, data []byte) []QueryRes {
+	cursor := tree_sitter.NewQueryCursor()
+	defer cursor.Close()
+	matches := cursor.Matches(q.query, root, data)
+
+	var res []QueryRes
+	for {
+		match := matches.Next()
+		if match == nil {
+			break
+		}
+
+		for _, cap := range match.Captures {
+			queryRes := QueryRes{
+				node:        &cap.Node,
+				captureName: q.cpatureName[cap.Index],
+			}
+			res = append(res, queryRes)
+		}
+	}
+	return res
+}
+
 func WalkAst(root *tree_sitter.Node, op AstNodeOps) {
 	walk_child := op(root)
 	if walk_child {

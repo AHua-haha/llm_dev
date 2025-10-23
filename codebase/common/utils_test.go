@@ -9,8 +9,7 @@ import (
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
 )
 
-func Test_walk(t *testing.T) {
-	src_code := `package file_map
+var src_code = `package file_map
 
 import (
 	"bytes"
@@ -167,11 +166,15 @@ var significantHtmlTags = map[string]bool{
 func isSignificantTag(tag string) bool {
 	return significantHtmlTags[tag]
 }
-	`
+`
+
+func Test_walk(t *testing.T) {
 	parser := tree_sitter.NewParser()
+	defer parser.Close()
 	parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
 
 	tree := parser.Parse([]byte(src_code), nil)
+	defer tree.Clone()
 	print_op := func(root *tree_sitter.Node) bool {
 		Kind := root.Kind()
 		fmt.Printf("Kind: %v\n", Kind)
@@ -263,4 +266,30 @@ func TestWalkDirGenTreeNode(t *testing.T) {
 			WalkNode(got, print_ops)
 		})
 	}
+}
+
+func TestNewTSQuery(t *testing.T) {
+	t.Run("test TS query", func(t *testing.T) {
+		querySrc := `
+(var_spec) @var
+`
+		parser := tree_sitter.NewParser()
+		defer parser.Close()
+		lang := tree_sitter.NewLanguage(golang.Language())
+		parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
+
+		tree := parser.Parse([]byte(src_code), nil)
+		defer tree.Clone()
+
+		query, err := NewTSQuery(querySrc, lang)
+		if err != nil {
+			fmt.Printf("err: %v\n", err)
+		}
+		defer query.Close()
+		res := query.Query(tree.RootNode(), []byte(src_code))
+		for _, elem := range res {
+			fmt.Printf("elem.captureName: %v\n", elem.captureName)
+			fmt.Printf("elem.node.Utf8Text([]byte(src_code)):\n %v\n", elem.node.Utf8Text([]byte(src_code)))
+		}
+	})
 }

@@ -295,12 +295,19 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 			var_spec := node.Child(1)
 			name := var_spec.ChildByFieldName("name")
 			typeName := var_spec.ChildByFieldName("type")
+			if name == nil {
+				fmt.Printf("getString(node): %v\n", getString(node))
+			}
 			def.Identifier = getString(name)
 			def.Content = getRange(node)
 			def.Summary = getRange(node)
 			def.AddKeyword("var")
 			def.AddKeyword(getString(name))
-			def.AddKeyword(getString(typeName))
+			if typeName != nil {
+				def.AddKeyword(getString(typeName))
+			} else {
+				fmt.Printf("getString(node): %v\n", getString(node))
+			}
 		case "short_var_declaration":
 			exp_list := node.ChildByFieldName("left")
 			count := exp_list.ChildCount()
@@ -345,7 +352,11 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 			def.Content = getRange(node)
 			def.Summary = [2]uint{node.StartByte(), node.ChildByFieldName("body").StartByte()}
 			def.AddKeyword("method")
-			def.AddKeyword(getString(receiver))
+			if receiver != nil {
+				def.AddKeyword(getString(receiver))
+			} else {
+				fmt.Printf("getString(node): %v\n", getString(node))
+			}
 			def.AddKeyword(getString(name))
 		default:
 			continue
@@ -500,8 +511,10 @@ func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan StaticAstCtx {
 				continue
 			}
 			parser := tree_sitter.NewParser()
+			defer parser.Close()
 			parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
 			tree := parser.Parse(data, nil)
+			defer tree.Clone()
 			common.WalkAst(tree.RootNode(), func(root *tree_sitter.Node) bool {
 				output := StaticAstCtx{
 					path:    fileInfo.path,

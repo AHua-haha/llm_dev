@@ -241,7 +241,7 @@ func TestBuildCodeBaseCtxOps_ExtractDefs(t *testing.T) {
 	}{
 		{
 			name: "test build code base extract definition",
-			root: "/root/workspace/llm_dev",
+			root: "/root/workspace/plandex/app/server",
 		},
 	}
 	for _, tt := range tests {
