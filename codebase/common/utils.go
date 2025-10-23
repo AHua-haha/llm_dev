@@ -21,8 +21,8 @@ type TSQuery struct {
 }
 
 type QueryRes struct {
-	node        *tree_sitter.Node
-	captureName string
+	Node        *tree_sitter.Node
+	CaptureName string
 }
 
 func NewTSQuery(queryStr string, lang *tree_sitter.Language) (*TSQuery, error) {
@@ -51,14 +51,12 @@ func (q *TSQuery) Query(root *tree_sitter.Node, data []byte) []QueryRes {
 		if match == nil {
 			break
 		}
-		fmt.Printf("match.PatternIndex: %v\n", match.PatternIndex)
 
 		for _, cap := range match.Captures {
 			queryRes := QueryRes{
-				node:        &cap.Node,
-				captureName: q.cpatureName[cap.Index],
+				Node:        &cap.Node,
+				CaptureName: q.cpatureName[cap.Index],
 			}
-			fmt.Printf("queryRes.captureName: %v\n", queryRes.captureName)
 			res = append(res, queryRes)
 		}
 	}

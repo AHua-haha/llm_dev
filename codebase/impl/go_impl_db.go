@@ -24,6 +24,18 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+const (
+	typeQueryStr string = `
+(type_identifier) @type
+	`
+	nameQueryStr string = `
+(identifier) @type
+`
+	varSpecQueryStr string = `
+(var_spec) @var
+`
+)
+
 type ContentRange [2]uint
 
 type TypeInfo struct {
@@ -144,9 +156,11 @@ type BuildCodeBaseCtxOps struct {
 
 func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	op.genAllDefs()
+	fmt.Printf("done\n")
 	// defArray := op.genAllDefs()
 	// op.insertDefs(defArray)
 	usedTypeInfoArray := op.genAllUseInfo()
+	fmt.Printf("done\n")
 	// op.insertUsedTypeInfo(usedTypeArray)
 	op.setMinPrefix(usedTypeInfoArray)
 	op.genFileMap()
@@ -273,16 +287,31 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo() []TypeInfo {
 }
 
 func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
-	getRange := func(n *tree_sitter.Node) ContentRange {
-		s, e := n.ByteRange()
-		return [2]uint{s, e}
+	lang := tree_sitter.NewLanguage(golang.Language())
+	typeQuery, err := common.NewTSQuery(typeQueryStr, lang)
+	if err != nil {
+		log.Error().Err(err).Msg("init query failed")
+		return nil
 	}
+	defer typeQuery.Close()
+	nameQuery, err := common.NewTSQuery(nameQueryStr, lang)
+	if err != nil {
+		log.Error().Err(err).Msg("init query failed")
+		return nil
+	}
+	defer nameQuery.Close()
+	varQuery, err := common.NewTSQuery(varSpecQueryStr, lang)
+	if err != nil {
+		log.Error().Err(err).Msg("init query failed")
+		return nil
+	}
+	defer varQuery.Close()
+
 	ctxChan := op.walkPojectStaticAst()
 	defs := []Definition{}
 	for ctx := range ctxChan {
 		getString := func(n *tree_sitter.Node) string {
-			pos := getRange(n)
-			return string(ctx.data[pos[0]:pos[1]])
+			return n.Utf8Text(ctx.data)
 		}
 		relPath, _ := filepath.Rel(op.rootPath, ctx.path)
 		var def Definition
@@ -291,77 +320,77 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 		node := ctx.astNode
 		Kind := node.Kind()
 		switch Kind {
+		case "method_declaration", "function_declaration":
+			def.Content = [2]uint{node.StartByte(), node.EndByte()}
+			def.Summary = [2]uint{node.StartByte(), node.ChildByFieldName("body").StartByte()}
+		default:
+			def.Content = [2]uint{node.StartByte(), node.EndByte()}
+			def.Summary = def.Content
+		}
+		switch Kind {
 		case "var_declaration":
-			var_spec := node.Child(1)
-			name := var_spec.ChildByFieldName("name")
-			typeName := var_spec.ChildByFieldName("type")
-			if name == nil {
-				fmt.Printf("getString(node): %v\n", getString(node))
-			}
-			def.Identifier = getString(name)
-			def.Content = getRange(node)
-			def.Summary = getRange(node)
 			def.AddKeyword("var")
-			def.AddKeyword(getString(name))
-			if typeName != nil {
-				def.AddKeyword(getString(typeName))
-			} else {
-				fmt.Printf("getString(node): %v\n", getString(node))
+			res := varQuery.Query(node, ctx.data)
+			for _, value := range res {
+				name := value.Node.ChildByFieldName("name")
+				def.Identifier = getString(name)
+				def.AddKeyword(def.Identifier)
+				typeNode := value.Node.ChildByFieldName("type")
+				if typeNode != nil {
+					types := typeQuery.Query(typeNode, ctx.data)
+					for _, value := range types {
+						def.AddKeyword(getString(value.Node))
+					}
+				}
+				fmt.Printf("%v\n", def.Keyword)
+				defs = append(defs, def)
 			}
 		case "short_var_declaration":
-			exp_list := node.ChildByFieldName("left")
-			count := exp_list.ChildCount()
-			def.Content = getRange(node)
-			def.Summary = getRange(node)
 			def.AddKeyword("var")
-			for i := range count {
-				if i%2 == 1 {
-					continue
-				}
-				def.AddKeyword(getString(exp_list.Child(i)))
+			res := nameQuery.Query(node, ctx.data)
+			for _, value := range res {
+				name := getString(value.Node)
+				def.Identifier = name
+				def.AddKeyword(name)
+				defs = append(defs, def)
 			}
 		case "package_clause":
 			identifier := node.Child(1)
 			def.Identifier = getString(identifier)
-			def.Content = getRange(node)
-			def.Summary = getRange(node)
 			def.AddKeyword("package")
 			def.AddKeyword(getString(identifier))
+			defs = append(defs, def)
 		case "import_declaration":
-			def.Content = getRange(node)
-			def.Summary = getRange(node)
 			def.AddKeyword("import")
+			defs = append(defs, def)
 		case "type_declaration":
 			identifier := node.Child(1).ChildByFieldName("name")
 			def.Identifier = getString(identifier)
-			def.Content = getRange(node)
-			def.Summary = getRange(node)
 			def.AddKeyword("type")
 			def.AddKeyword(getString(identifier))
+			defs = append(defs, def)
 		case "function_declaration":
 			name := node.ChildByFieldName("name")
 			def.Identifier = getString(name)
-			def.Content = getRange(node)
-			def.Summary = [2]uint{node.StartByte(), node.ChildByFieldName("body").StartByte()}
 			def.AddKeyword("function")
 			def.AddKeyword(getString(name))
+			defs = append(defs, def)
 		case "method_declaration":
-			receiver := node.ChildByFieldName("receiver").Child(1).ChildByFieldName("type").Child(1)
+			receiver := node.ChildByFieldName("receiver")
 			name := node.ChildByFieldName("name")
 			def.Identifier = getString(name)
-			def.Content = getRange(node)
-			def.Summary = [2]uint{node.StartByte(), node.ChildByFieldName("body").StartByte()}
 			def.AddKeyword("method")
-			if receiver != nil {
-				def.AddKeyword(getString(receiver))
-			} else {
-				fmt.Printf("getString(node): %v\n", getString(node))
+			res := typeQuery.Query(receiver, ctx.data)
+			for _, value := range res {
+				def.AddKeyword(getString(value.Node))
 			}
 			def.AddKeyword(getString(name))
+			fmt.Printf("%v\n", def.Keyword)
+			defs = append(defs, def)
+
 		default:
 			continue
 		}
-		defs = append(defs, def)
 	}
 	return defs
 }

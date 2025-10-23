@@ -292,8 +292,8 @@ func TestNewTSQuery(t *testing.T) {
 		defer query.Close()
 		res := query.Query(tree.RootNode(), []byte(src_code))
 		for _, elem := range res {
-			fmt.Printf("elem.captureName: %v\n", elem.captureName)
-			fmt.Printf("elem.node.Utf8Text([]byte(src_code)):\n %v\n", elem.node.Utf8Text([]byte(src_code)))
+			fmt.Printf("elem.captureName: %v\n", elem.CaptureName)
+			fmt.Printf("elem.node.Utf8Text([]byte(src_code)):\n %v\n", elem.Node.Utf8Text([]byte(src_code)))
 		}
 	})
 }
