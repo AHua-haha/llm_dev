@@ -155,13 +155,14 @@ type BuildCodeBaseCtxOps struct {
 }
 
 func (op *BuildCodeBaseCtxOps) ExtractDefs() {
-	op.genAllDefs()
-	fmt.Printf("done\n")
-	// defArray := op.genAllDefs()
+	// op.genAllDefs()
+	defArray := op.genAllDefs()
+	fmt.Printf("len(defArray): %v\n", len(defArray))
 	// op.insertDefs(defArray)
-	usedTypeInfoArray := op.genAllUseInfo()
 	fmt.Printf("done\n")
-	// op.insertUsedTypeInfo(usedTypeArray)
+	usedTypeInfoArray := op.genAllUseInfo()
+	fmt.Printf("len(usedTypeInfoArray): %v\n", len(usedTypeInfoArray))
+	fmt.Printf("done\n")
 	op.setMinPrefix(usedTypeInfoArray)
 	op.genFileMap()
 }
@@ -395,24 +396,42 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 	return defs
 }
 func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
-	for _, useInfo := range usedTypeInfos {
-		if useInfo.IsDependency {
-			continue
-		}
+	findExcatDef := func(useInfo TypeInfo) *Definition {
 		var identifier *string = nil
 		if useInfo.Identifier != "" {
 			identifier = &useInfo.Identifier
 		}
-		filter := genDefFilter(&useInfo.DeclareFile, identifier, useInfo.Keyword)
-		res := op.findDefs(filter)
-		size := len(res)
-		if size == 0 {
-			log.Info().Any("useinfo keyword", useInfo.Keyword).Msg("definition not found")
-			continue
-		} else if size > 1 {
-			log.Error().Int("size", size).Any("useinfo keyword", useInfo.Keyword).Msg("definition found more than one")
+		var def Definition
+		foundExcat := false
+		size := len(useInfo.Keyword)
+		for i := range size {
+			keyword := useInfo.Keyword[:i]
+			filter := genDefFilter(&useInfo.DeclareFile, identifier, keyword)
+			res := op.findDefs(filter)
+			resLen := len(res)
+			if resLen == 0 {
+				break
+			}
+			if resLen == 1 {
+				foundExcat = true
+				def = res[0]
+				break
+			}
 		}
-		def := res[0]
+		if foundExcat {
+			return &def
+		}
+		return nil
+	}
+	for _, useInfo := range usedTypeInfos {
+		if useInfo.IsDependency {
+			continue
+		}
+		def := findExcatDef(useInfo)
+		if def == nil {
+			log.Error().Any("keyword", useInfo.Keyword).Msg("do not fund excat def")
+			continue
+		}
 		minPrefix := common.CommonRootDir(def.MinPrefix, useInfo.UseFile)
 		if minPrefix == def.MinPrefix {
 			continue
