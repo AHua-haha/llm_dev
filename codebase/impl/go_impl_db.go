@@ -136,6 +136,21 @@ type FileDirInfo struct {
 	UsedDefs []Definition
 }
 
+func (fd *FileDirInfo) getSummary() map[string][]ContentRange {
+	defsByFile := fd.getDefByFile()
+	res := make(map[string][]ContentRange, len(defsByFile))
+	for file, ranges := range defsByFile {
+		uniqueRange := []ContentRange{ranges[0].Summary}
+		for i := 1; i < len(ranges); i++ {
+			if ranges[i].Summary != ranges[i-1].Summary {
+				uniqueRange = append(uniqueRange, ranges[i].Summary)
+			}
+		}
+		res[file] = uniqueRange
+	}
+	return res
+}
+
 func (fd *FileDirInfo) getDefByFile() map[string][]Definition {
 	res := make(map[string][]Definition)
 	for _, usedDef := range fd.UsedDefs {
@@ -158,7 +173,7 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	// op.genAllDefs()
 	defArray := op.genAllDefs()
 	fmt.Printf("len(defArray): %v\n", len(defArray))
-	// op.insertDefs(defArray)
+	op.insertDefs(defArray)
 	fmt.Printf("done\n")
 	usedTypeInfoArray := op.genAllUseInfo()
 	fmt.Printf("len(usedTypeInfoArray): %v\n", len(usedTypeInfoArray))
@@ -207,16 +222,15 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 	}
 	for k, v := range fileMap {
 		fmt.Printf("# %s\n", k)
-		usedTypeByFile := v.getDefByFile()
-		for relpath, defs := range usedTypeByFile {
+		contentrange := v.getSummary()
+		for relpath, defs := range contentrange {
 			path := filepath.Join(op.rootPath, relpath)
 			data, _ := os.ReadFile(path)
 			fmt.Printf("## %s\n", relpath)
-			for _, def := range defs {
-				summaryRange := def.Summary
+			for _, summary := range defs {
 				size := uint(len(data))
-				s := summaryRange[0]
-				e := summaryRange[1]
+				s := summary[0]
+				e := summary[1]
 				if s < size && e < size {
 					str := string(data[s:e])
 					fmt.Printf("%s\n", str)
@@ -343,7 +357,6 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 						def.AddKeyword(getString(value.Node))
 					}
 				}
-				fmt.Printf("%v\n", def.Keyword)
 				defs = append(defs, def)
 			}
 		case "short_var_declaration":
@@ -386,7 +399,6 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 				def.AddKeyword(getString(value.Node))
 			}
 			def.AddKeyword(getString(name))
-			fmt.Printf("%v\n", def.Keyword)
 			defs = append(defs, def)
 
 		default:
