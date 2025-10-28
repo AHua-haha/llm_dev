@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"llm_dev/codebase/impl"
+	"llm_dev/database"
 	"llm_dev/model"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -39,7 +41,7 @@ var loadFileDefsTool = openai.FunctionDefinition{
 	Description: `
 Load the context of some definition in a given file.
 For example, given code block in file src/foo.go
-`+"```" + `
+` + "```" + `
 # src/foo.go
 var baseUrl string
 type File struct {
@@ -61,10 +63,10 @@ use this tool to load context of definiton, you should specify two parameters:
 				Type:        jsonschema.String,
 				Description: "the file path to load, e.g. src/foo.go",
 			},
-			"defsName" : {
+			"defsName": {
 				Type:        jsonschema.Array,
 				Description: `an array of the definition names you want to load, struct name, function name, variable name, e.g. ["baseUrl", "File", "GetFileContent"]`,
-			}
+			},
 		},
 		Required: []string{"file", "defsName"},
 	},
@@ -72,29 +74,68 @@ use this tool to load context of definiton, you should specify two parameters:
 
 type FileContentCtxMgr struct {
 	rootPath           string
-	fileMap  			map[string]*impl.FileDirInfo
-	autoLoadCtx      map[string]*CodeFile
+	fileMap            map[string]*impl.FileDirInfo
+	autoLoadCtx        map[string]*CodeFile
 	buildCodeBaseCtxop *impl.BuildCodeBaseCtxOps
 }
 
-func (mgr *FileContentCtxMgr) writeExternalDefs(buf *bytes.Buffer) {
-	fileChan := mgr.buildCodeBaseCtxop.WalkProjectFileTree()
-	for file := range fileChan {
-		fdInfo := mgr.fileMap[file]
-		if fdInfo == nil {
-			continue
-		}
+func NewFileCtxMgr(root string) *FileContentCtxMgr {
+	mgr := &FileContentCtxMgr{
+		rootPath: root,
+		buildCodeBaseCtxop: &impl.BuildCodeBaseCtxOps{
+			RootPath: root,
+			Db:       database.GetDBClient().Database("llm_dev"),
+		},
+	}
+	return mgr
+}
+
+func (mgr *FileContentCtxMgr) writeFileContent(buf *bytes.Buffer, relPath string, ranges []impl.ContentRange) {
+	data, err := os.ReadFile(filepath.Join(mgr.rootPath, relPath))
+	if err != nil {
+		return
+	}
+	for _, r := range ranges {
+		s := r[0]
+		e := r[1]
+		buf.Write(data[s:e])
+		buf.WriteByte('\n')
+	}
+}
+
+func (mgr *FileContentCtxMgr) writeFdinfo(buf *bytes.Buffer, fd *impl.FileDirInfo) {
+	contentRange := fd.GetSummary()
+	if len(contentRange) == 0 {
+		buf.WriteString(fmt.Sprintf("# %s\n", fd.RelPath))
+		buf.WriteString("No External Definition\n")
+		return
+	}
 	if fd.IsDir {
-		buf.WriteString(headLine(fd.RelPath))
-		for file, _ := range contentRange {
-			buf.WriteString(headLine(file))
+		buf.WriteString(fmt.Sprintf("# %s\n", fd.RelPath))
+		for file, ranges := range contentRange {
+			buf.WriteString(fmt.Sprintf("## %s\n", file))
+			mgr.writeFileContent(buf, file, ranges)
 		}
 	} else {
 		if len(contentRange) != 1 {
 			return
 		}
-		buf.WriteString("# " + fd.RelPath)
+		ranges := contentRange[fd.RelPath]
+		buf.WriteString(fmt.Sprintf("# %s\n", fd.RelPath))
+		mgr.writeFileContent(buf, fd.RelPath, ranges)
 	}
+}
+
+func (mgr *FileContentCtxMgr) WriteExternalDefs(buf *bytes.Buffer) {
+	mgr.fileMap = mgr.buildCodeBaseCtxop.GenFileMap()
+	fileChan := mgr.buildCodeBaseCtxop.WalkProjectFileTree()
+	for file := range fileChan {
+		relPath, _ := filepath.Rel(mgr.rootPath, file.Path)
+		fdInfo := mgr.fileMap[relPath]
+		if fdInfo == nil {
+			continue
+		}
+		mgr.writeFdinfo(buf, fdInfo)
 	}
 }
 

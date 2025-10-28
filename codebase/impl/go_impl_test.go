@@ -248,10 +248,10 @@ func TestBuildCodeBaseCtxOps_ExtractDefs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// TODO: construct the receiver type.
 			var op BuildCodeBaseCtxOps
-			op.rootPath = tt.root
+			op.RootPath = tt.root
 			database.InitDB()
 			defer database.CloseDB()
-			op.db = database.GetDBClient().Database("llm_dev")
+			op.Db = database.GetDBClient().Database("llm_dev")
 			op.ExtractDefs()
 		})
 	}

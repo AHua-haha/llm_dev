@@ -40,7 +40,7 @@ func TestBuildCodeBaseCtxOps_findDefs(t *testing.T) {
 	defer database.CloseDB()
 	client := database.GetDBClient()
 	var op BuildCodeBaseCtxOps
-	op.db = client.Database("llm_dev")
+	op.Db = client.Database("llm_dev")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// TODO: construct the receiver type.

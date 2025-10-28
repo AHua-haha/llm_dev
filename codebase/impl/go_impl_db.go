@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"go/ast"
@@ -137,33 +136,7 @@ type FileDirInfo struct {
 	UsedDefs []Definition
 }
 
-func GetFileContent(ranges []ContentRange, data []byte, buf *bytes.Buffer) {
-	for _, r := range ranges {
-		s := r[0]
-		e := r[1]
-		buf.Write(data[s:e])
-	}
-}
-
-func (fd *FileDirInfo) WriteContent(buf *bytes.Buffer) {
-	headLine := func(file string) string {
-		return fmt.Sprintf("# %s\n", file)
-	}
-	contentRange := fd.getSummary()
-	if fd.IsDir {
-		buf.WriteString(headLine(fd.RelPath))
-		for file, _ := range contentRange {
-			buf.WriteString(headLine(file))
-		}
-	} else {
-		if len(contentRange) != 1 {
-			return
-		}
-		buf.WriteString("# " + fd.RelPath)
-	}
-}
-
-func (fd *FileDirInfo) getSummary() map[string][]ContentRange {
+func (fd *FileDirInfo) GetSummary() map[string][]ContentRange {
 	defsByFile := fd.getDefByFile()
 	res := make(map[string][]ContentRange, len(defsByFile))
 	for file, ranges := range defsByFile {
@@ -192,8 +165,8 @@ func (fd *FileDirInfo) getDefByFile() map[string][]Definition {
 }
 
 type BuildCodeBaseCtxOps struct {
-	rootPath string
-	db       *mongo.Database
+	RootPath string
+	Db       *mongo.Database
 }
 
 func (op *BuildCodeBaseCtxOps) ExtractDefs() {
@@ -206,21 +179,20 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	fmt.Printf("len(usedTypeInfoArray): %v\n", len(usedTypeInfoArray))
 	fmt.Printf("done\n")
 	op.setMinPrefix(usedTypeInfoArray)
-	op.genFileMap()
 }
-func (op *BuildCodeBaseCtxOps) genFileMap() {
+func (op *BuildCodeBaseCtxOps) GenFileMap() map[string]*FileDirInfo {
 	fileChan := op.WalkProjectFileTree()
 	fileMap := make(map[string]*FileDirInfo)
 	for fileInfo := range fileChan {
-		relpath, _ := filepath.Rel(op.rootPath, fileInfo.path)
+		relpath, _ := filepath.Rel(op.RootPath, fileInfo.Path)
 		info := &FileDirInfo{
 			RelPath: relpath,
 		}
-		if fileInfo.d.IsDir() {
+		if fileInfo.D.IsDir() {
 			info.IsDir = true
 		} else {
 			info.IsDir = false
-			ext := filepath.Ext(fileInfo.d.Name())
+			ext := filepath.Ext(fileInfo.D.Name())
 			if ext != ".go" {
 				continue
 			}
@@ -247,28 +219,11 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 			p = filepath.Dir(p)
 		}
 	}
-	for k, v := range fileMap {
-		fmt.Printf("# %s\n", k)
-		contentrange := v.getSummary()
-		for relpath, defs := range contentrange {
-			path := filepath.Join(op.rootPath, relpath)
-			data, _ := os.ReadFile(path)
-			fmt.Printf("## %s\n", relpath)
-			for _, summary := range defs {
-				size := uint(len(data))
-				s := summary[0]
-				e := summary[1]
-				if s < size && e < size {
-					str := string(data[s:e])
-					fmt.Printf("%s\n", str)
-				}
-			}
-		}
-	}
+	return fileMap
 }
 
 func (op *BuildCodeBaseCtxOps) genAllUseInfo() []TypeInfo {
-	moduleName, err := common.GetModulePath(filepath.Join(op.rootPath, "go.mod"))
+	moduleName, err := common.GetModulePath(filepath.Join(op.RootPath, "go.mod"))
 	if err != nil {
 		return nil
 	}
@@ -278,13 +233,13 @@ func (op *BuildCodeBaseCtxOps) genAllUseInfo() []TypeInfo {
 	for ctx := range ctxChan {
 		p := ctx.pos
 		obj := ctx.obj
-		relPath, _ := filepath.Rel(op.rootPath, ctx.path)
+		relPath, _ := filepath.Rel(op.RootPath, ctx.path)
 		var typeInfo TypeInfo
 		typeInfo.UseFile = relPath
 		typeInfo.Identifier = obj.Name()
 		pkgPath := obj.Pkg().Path()
 		if strings.HasPrefix(pkgPath, moduleName) {
-			declare_file, _ := filepath.Rel(op.rootPath, p.Filename)
+			declare_file, _ := filepath.Rel(op.RootPath, p.Filename)
 			typeInfo.DeclareFile = declare_file
 			typeInfo.IsDependency = false
 		} else {
@@ -355,7 +310,7 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 		getString := func(n *tree_sitter.Node) string {
 			return n.Utf8Text(ctx.data)
 		}
-		relPath, _ := filepath.Rel(op.rootPath, ctx.path)
+		relPath, _ := filepath.Rel(op.RootPath, ctx.path)
 		var def Definition
 		def.RelFile = relPath
 		def.MinPrefix = relPath
@@ -477,7 +432,7 @@ func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
 		}
 		def.MinPrefix = minPrefix
 		update := def.genUpdate("minprefix")
-		collection := op.db.Collection("Defs")
+		collection := op.Db.Collection("Defs")
 		_, err := collection.UpdateByID(context.TODO(), def.ID, update)
 		if err != nil {
 			log.Error().Err(err).Any("def", def).Msg("update definition failed")
@@ -495,16 +450,16 @@ func ToAnySlice[T any](input []T) []any {
 }
 func (op *BuildCodeBaseCtxOps) insertUsedTypeInfo(array []TypeInfo) {
 	anySlice := ToAnySlice(array)
-	op.db.Collection("Uses").InsertMany(context.TODO(), anySlice)
+	op.Db.Collection("Uses").InsertMany(context.TODO(), anySlice)
 }
 
 func (op *BuildCodeBaseCtxOps) insertDefs(array []Definition) {
 	anySlice := ToAnySlice(array)
-	op.db.Collection("Defs").InsertMany(context.TODO(), anySlice)
+	op.Db.Collection("Defs").InsertMany(context.TODO(), anySlice)
 }
 
 func (op *BuildCodeBaseCtxOps) FindDefs(filter bson.M) []Definition {
-	collection := op.db.Collection("Defs")
+	collection := op.Db.Collection("Defs")
 	cursor, err := collection.Find(context.TODO(), filter)
 	if err != nil {
 		log.Error().Err(err).Any("filter", filter).Msgf("run fild failed")
@@ -533,7 +488,7 @@ func (op *BuildCodeBaseCtxOps) walkProjectTypeAst() <-chan typeAstCtx {
 		cfg := &packages.Config{
 			Mode:  packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedFiles,
 			Fset:  token.NewFileSet(),
-			Dir:   op.rootPath,
+			Dir:   op.RootPath,
 			Tests: true,
 		}
 
@@ -546,7 +501,7 @@ func (op *BuildCodeBaseCtxOps) walkProjectTypeAst() <-chan typeAstCtx {
 			for i, file := range pkg.Syntax {
 				typeMap := make(map[types.Object]struct{})
 				fileName := pkg.GoFiles[i]
-				if !strings.HasPrefix(fileName, op.rootPath) {
+				if !strings.HasPrefix(fileName, op.RootPath) {
 					continue
 				}
 				ast.Inspect(file, func(n ast.Node) bool {
@@ -589,10 +544,10 @@ func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan StaticAstCtx {
 	go func() {
 		fileChan := op.WalkProjectFileTree()
 		for fileInfo := range fileChan {
-			if fileInfo.d.IsDir() || filepath.Ext(fileInfo.d.Name()) != ".go" {
+			if fileInfo.D.IsDir() || filepath.Ext(fileInfo.D.Name()) != ".go" {
 				continue
 			}
-			data, err := os.ReadFile(fileInfo.path)
+			data, err := os.ReadFile(fileInfo.Path)
 			if err != nil {
 				log.Error().Msgf("read file error %s", err)
 				continue
@@ -604,7 +559,7 @@ func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan StaticAstCtx {
 			defer tree.Clone()
 			common.WalkAst(tree.RootNode(), func(root *tree_sitter.Node) bool {
 				output := StaticAstCtx{
-					path:    fileInfo.path,
+					path:    fileInfo.Path,
 					data:    data,
 					astNode: root,
 				}
@@ -624,14 +579,14 @@ func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan StaticAstCtx {
 }
 
 type FileTreeCtx struct {
-	path string
-	d    fs.DirEntry
+	Path string
+	D    fs.DirEntry
 }
 
 func (op *BuildCodeBaseCtxOps) WalkProjectFileTree() <-chan FileTreeCtx {
 	outputChan := make(chan FileTreeCtx, 10)
 	go func() {
-		ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
+		ig, err := ignore.CompileIgnoreFile(filepath.Join(op.RootPath, ".gitignore"))
 		if err != nil {
 			log.Error().Msgf("compile ignore failed")
 			return
@@ -639,17 +594,17 @@ func (op *BuildCodeBaseCtxOps) WalkProjectFileTree() <-chan FileTreeCtx {
 		walkDirFunc := func(path string, d fs.DirEntry, err error) error {
 			keep := common.NewFilter(path, d).
 				FilterSymlink().
-				FilterGitIgnore(op.rootPath, ig).Keep()
+				FilterGitIgnore(op.RootPath, ig).Keep()
 			if !keep {
 				return filepath.SkipDir
 			}
 			outputChan <- FileTreeCtx{
-				path: path,
-				d:    d,
+				Path: path,
+				D:    d,
 			}
 			return nil
 		}
-		filepath.WalkDir(op.rootPath, walkDirFunc)
+		filepath.WalkDir(op.RootPath, walkDirFunc)
 		close(outputChan)
 	}()
 	return outputChan
