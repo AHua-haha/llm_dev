@@ -14,7 +14,8 @@ func TestFileContentCtxMgr_WriteExternalDefs(t *testing.T) {
 		mgr := NewFileCtxMgr("/root/workspace/llm_dev")
 		// mgr.buildCodeBaseCtxop.ExtractDefs()
 		var buf bytes.Buffer
-		mgr.WriteExternalDefs(&buf)
+		// mgr.WriteUsedDefs(&buf)
+		mgr.WriteFileTree(&buf)
 		fmt.Print(buf.String())
 	})
 }

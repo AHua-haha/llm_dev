@@ -128,7 +128,7 @@ func (mgr *FileContentCtxMgr) writeFdinfo(buf *bytes.Buffer, fd *impl.FileDirInf
 	}
 }
 
-func (mgr *FileContentCtxMgr) WriteExternalDefs(buf *bytes.Buffer) {
+func (mgr *FileContentCtxMgr) WriteUsedDefs(buf *bytes.Buffer) {
 	description := `
 This section shows the definition under certain file or firectory that is being used by some code that is not under the same file or directory.
 So fot certain file or directory, the definiton that is only used within the same file or directory is omitted。
@@ -149,6 +149,33 @@ This helps you better understand the functionality of a file or directory from t
 	}
 	buf.WriteString("```\n")
 	buf.WriteString("## END OF CODEBASE USED DEFINITION ##\n")
+}
+func (mgr *FileContentCtxMgr) WriteFileTree(buf *bytes.Buffer) {
+	buf.WriteString("## CODEBASE FILE TREE ##\n\n")
+	buf.WriteString("This section shows the file tree structure of the codebase.\n")
+	buf.WriteString("```\n")
+	fileChan := mgr.buildCodeBaseCtxop.WalkProjectFileTree()
+	for file := range fileChan {
+		if !file.D.IsDir() {
+			continue
+		}
+		relPath, _ := filepath.Rel(mgr.rootPath, file.Path)
+		entries, err := os.ReadDir(file.Path)
+		if err != nil {
+			continue
+		}
+		buf.WriteString(fmt.Sprintf("# %s\n", relPath))
+		for _, entry := range entries {
+			if entry.IsDir() {
+				buf.WriteString(fmt.Sprintf("- dir %s\n", entry.Name()))
+			} else {
+				buf.WriteString(fmt.Sprintf("- file %s\n", entry.Name()))
+			}
+		}
+		buf.WriteByte('\n')
+	}
+	buf.WriteString("```\n")
+	buf.WriteString("## END OF CODEBASE FILE TREE ##\n")
 }
 
 func (mgr *FileContentCtxMgr) GetToolDef() model.ToolDef {
