@@ -15,6 +15,6 @@ func TestFileContentCtxMgr_WriteExternalDefs(t *testing.T) {
 		// mgr.buildCodeBaseCtxop.ExtractDefs()
 		var buf bytes.Buffer
 		mgr.WriteExternalDefs(&buf)
-		fmt.Printf("buf.String(): %v\n", buf.String())
+		fmt.Print(buf.String())
 	})
 }

@@ -106,27 +106,37 @@ func (mgr *FileContentCtxMgr) writeFileContent(buf *bytes.Buffer, relPath string
 func (mgr *FileContentCtxMgr) writeFdinfo(buf *bytes.Buffer, fd *impl.FileDirInfo) {
 	contentRange := fd.GetSummary()
 	if len(contentRange) == 0 {
-		buf.WriteString(fmt.Sprintf("# %s\n", fd.RelPath))
-		buf.WriteString("No External Definition\n")
+		buf.WriteString(fmt.Sprintf("# %s\n\n", fd.RelPath))
+		buf.WriteString("NO Definition Used by Outer code\n\n")
 		return
 	}
 	if fd.IsDir {
-		buf.WriteString(fmt.Sprintf("# %s\n", fd.RelPath))
+		buf.WriteString(fmt.Sprintf("# %s\n\n", fd.RelPath))
 		for file, ranges := range contentRange {
-			buf.WriteString(fmt.Sprintf("## %s\n", file))
+			buf.WriteString(fmt.Sprintf("- %s\n", file))
 			mgr.writeFileContent(buf, file, ranges)
+			buf.WriteByte('\n')
 		}
 	} else {
 		if len(contentRange) != 1 {
 			return
 		}
 		ranges := contentRange[fd.RelPath]
-		buf.WriteString(fmt.Sprintf("# %s\n", fd.RelPath))
+		buf.WriteString(fmt.Sprintf("# %s\n\n", fd.RelPath))
 		mgr.writeFileContent(buf, fd.RelPath, ranges)
+		buf.WriteByte('\n')
 	}
 }
 
 func (mgr *FileContentCtxMgr) WriteExternalDefs(buf *bytes.Buffer) {
+	description := `
+This section shows the definition under certain file or firectory that is being used by some code that is not under the same file or directory.
+So fot certain file or directory, the definiton that is only used within the same file or directory is omitted。
+This helps you better understand the functionality of a file or directory from the perspective of the whole codebase.
+`
+	buf.WriteString("## CODEBASE USED DEFINITION ##\n\n")
+	buf.WriteString(description)
+	buf.WriteString("```\n")
 	mgr.fileMap = mgr.buildCodeBaseCtxop.GenFileMap()
 	fileChan := mgr.buildCodeBaseCtxop.WalkProjectFileTree()
 	for file := range fileChan {
@@ -137,6 +147,8 @@ func (mgr *FileContentCtxMgr) WriteExternalDefs(buf *bytes.Buffer) {
 		}
 		mgr.writeFdinfo(buf, fdInfo)
 	}
+	buf.WriteString("```\n")
+	buf.WriteString("## END OF CODEBASE USED DEFINITION ##\n")
 }
 
 func (mgr *FileContentCtxMgr) GetToolDef() model.ToolDef {
