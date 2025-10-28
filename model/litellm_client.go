@@ -17,6 +17,13 @@ type StreamRes struct {
 	err     error
 }
 
+type ToolHandler func(args string)
+
+type ToolDef struct {
+	openai.FunctionDefinition
+	Handler ToolHandler
+}
+
 func SendReq(req *http.Request) (<-chan StreamRes, error) {
 	resp, err := httpClient.Do(req)
 	if err != nil {

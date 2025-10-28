@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"go/ast"
@@ -61,7 +62,7 @@ func (info *TypeInfo) genFilterForDef() bson.M {
 	if info.Identifier != "" {
 		identifier = &info.Identifier
 	}
-	return genDefFilter(file, identifier, info.Keyword)
+	return GenDefFilter(file, identifier, info.Keyword)
 }
 
 func (info *TypeInfo) addKeyword(value string) {
@@ -78,7 +79,7 @@ type Definition struct {
 	RelFile    string
 }
 
-func genDefFilter(relfile *string, identifier *string, keyword []string) bson.M {
+func GenDefFilter(relfile *string, identifier *string, keyword []string) bson.M {
 	builder := database.NewFilter()
 	if relfile != nil {
 		builder.AddKV("relfile", relfile)
@@ -136,6 +137,32 @@ type FileDirInfo struct {
 	UsedDefs []Definition
 }
 
+func GetFileContent(ranges []ContentRange, data []byte, buf *bytes.Buffer) {
+	for _, r := range ranges {
+		s := r[0]
+		e := r[1]
+		buf.Write(data[s:e])
+	}
+}
+
+func (fd *FileDirInfo) WriteContent(buf *bytes.Buffer) {
+	headLine := func(file string) string {
+		return fmt.Sprintf("# %s\n", file)
+	}
+	contentRange := fd.getSummary()
+	if fd.IsDir {
+		buf.WriteString(headLine(fd.RelPath))
+		for file, _ := range contentRange {
+			buf.WriteString(headLine(file))
+		}
+	} else {
+		if len(contentRange) != 1 {
+			return
+		}
+		buf.WriteString("# " + fd.RelPath)
+	}
+}
+
 func (fd *FileDirInfo) getSummary() map[string][]ContentRange {
 	defsByFile := fd.getDefByFile()
 	res := make(map[string][]ContentRange, len(defsByFile))
@@ -182,7 +209,7 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	op.genFileMap()
 }
 func (op *BuildCodeBaseCtxOps) genFileMap() {
-	fileChan := op.walkProjectFileTree()
+	fileChan := op.WalkProjectFileTree()
 	fileMap := make(map[string]*FileDirInfo)
 	for fileInfo := range fileChan {
 		relpath, _ := filepath.Rel(op.rootPath, fileInfo.path)
@@ -205,7 +232,7 @@ func (op *BuildCodeBaseCtxOps) genFileMap() {
 			database.Ne: []string{"$minprefix", "$relfile"},
 		},
 	}
-	result := op.findDefs(filter)
+	result := op.FindDefs(filter)
 	for _, def := range result {
 		p := def.RelFile
 		root := def.MinPrefix
@@ -418,8 +445,8 @@ func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
 		size := len(useInfo.Keyword)
 		for i := range size {
 			keyword := useInfo.Keyword[:i]
-			filter := genDefFilter(&useInfo.DeclareFile, identifier, keyword)
-			res := op.findDefs(filter)
+			filter := GenDefFilter(&useInfo.DeclareFile, identifier, keyword)
+			res := op.FindDefs(filter)
 			resLen := len(res)
 			if resLen == 0 {
 				break
@@ -476,7 +503,7 @@ func (op *BuildCodeBaseCtxOps) insertDefs(array []Definition) {
 	op.db.Collection("Defs").InsertMany(context.TODO(), anySlice)
 }
 
-func (op *BuildCodeBaseCtxOps) findDefs(filter bson.M) []Definition {
+func (op *BuildCodeBaseCtxOps) FindDefs(filter bson.M) []Definition {
 	collection := op.db.Collection("Defs")
 	cursor, err := collection.Find(context.TODO(), filter)
 	if err != nil {
@@ -560,7 +587,7 @@ type StaticAstCtx struct {
 func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan StaticAstCtx {
 	outputChan := make(chan StaticAstCtx, 10)
 	go func() {
-		fileChan := op.walkProjectFileTree()
+		fileChan := op.WalkProjectFileTree()
 		for fileInfo := range fileChan {
 			if fileInfo.d.IsDir() || filepath.Ext(fileInfo.d.Name()) != ".go" {
 				continue
@@ -596,13 +623,13 @@ func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan StaticAstCtx {
 	return outputChan
 }
 
-type fileTreeCtx struct {
+type FileTreeCtx struct {
 	path string
 	d    fs.DirEntry
 }
 
-func (op *BuildCodeBaseCtxOps) walkProjectFileTree() <-chan fileTreeCtx {
-	outputChan := make(chan fileTreeCtx, 10)
+func (op *BuildCodeBaseCtxOps) WalkProjectFileTree() <-chan FileTreeCtx {
+	outputChan := make(chan FileTreeCtx, 10)
 	go func() {
 		ig, err := ignore.CompileIgnoreFile(filepath.Join(op.rootPath, ".gitignore"))
 		if err != nil {
@@ -616,7 +643,7 @@ func (op *BuildCodeBaseCtxOps) walkProjectFileTree() <-chan fileTreeCtx {
 			if !keep {
 				return filepath.SkipDir
 			}
-			outputChan <- fileTreeCtx{
+			outputChan <- FileTreeCtx{
 				path: path,
 				d:    d,
 			}

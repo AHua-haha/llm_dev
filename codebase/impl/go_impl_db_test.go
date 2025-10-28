@@ -44,8 +44,8 @@ func TestBuildCodeBaseCtxOps_findDefs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// TODO: construct the receiver type.
-			filter := genDefFilter(tt.relfile, tt.identifier, tt.keyword)
-			got := op.findDefs(filter)
+			filter := GenDefFilter(tt.relfile, tt.identifier, tt.keyword)
+			got := op.FindDefs(filter)
 			fmt.Printf("len(got): %v\n", len(got))
 			for _, def := range got {
 				fmt.Printf("def: %v\n", def)
