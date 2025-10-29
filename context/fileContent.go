@@ -178,15 +178,20 @@ func (mgr *FileContentCtxMgr) WriteFileTree(buf *bytes.Buffer) {
 	buf.WriteString("## END OF CODEBASE FILE TREE ##\n")
 }
 
-func (mgr *FileContentCtxMgr) GetToolDef() model.ToolDef {
+func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
 	handler := func(args string) {
 		mgr.loadFile("")
 	}
-	def := model.ToolDef{
+	var res []model.ToolDef
+	res = append(res, model.ToolDef{
 		FunctionDefinition: loadFileTool,
 		Handler:            handler,
-	}
-	return def
+	})
+	res = append(res, model.ToolDef{
+		FunctionDefinition: loadFileDefsTool,
+		Handler:            handler,
+	})
+	return res
 }
 
 func (mgr *FileContentCtxMgr) loadFile(relPath string) error {
