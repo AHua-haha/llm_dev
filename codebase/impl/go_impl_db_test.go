@@ -53,3 +53,19 @@ func TestBuildCodeBaseCtxOps_findDefs(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCtx(t *testing.T) {
+
+	t.Run("test build ctx op", func(t *testing.T) {
+		database.InitDB()
+		defer database.CloseDB()
+		op := BuildCodeBaseCtxOps{
+			RootPath: "/root/workspace/llm_dev",
+			Db:       database.GetDBClient().Database("llm_dev"),
+		}
+		file := op.WalkProjectFileTree()
+		for f := range file {
+			fmt.Printf("%s\n", f.Path)
+		}
+	})
+}

@@ -170,6 +170,9 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	// op.genAllDefs()
 	defArray := op.genAllDefs()
 	fmt.Printf("len(defArray): %v\n", len(defArray))
+	for _, def := range defArray {
+		fmt.Printf("%s %v\n", def.RelFile, def.Keyword)
+	}
 	op.insertDefs(defArray)
 	fmt.Printf("done\n")
 	usedTypeInfoArray := op.genAllUseInfo()
@@ -602,7 +605,11 @@ func (op *BuildCodeBaseCtxOps) WalkProjectFileTree() <-chan FileTreeCtx {
 				FilterSymlink().
 				FilterGitIgnore(op.RootPath, ig).Keep()
 			if !keep {
-				return filepath.SkipDir
+				if d.IsDir() {
+					return filepath.SkipDir
+				} else {
+					return nil
+				}
 			}
 			outputChan <- FileTreeCtx{
 				Path: path,
