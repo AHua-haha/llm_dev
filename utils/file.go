@@ -1,0 +1,95 @@
+package utils
+
+import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"os"
+	"sort"
+)
+
+type Range struct {
+	startLine uint
+	endLine   uint
+}
+
+type FileContent struct {
+	chunks []Range
+}
+
+func (fc *FileContent) AddChunk(s, e uint) {
+	fc.chunks = append(fc.chunks, Range{
+		startLine: s,
+		endLine:   e,
+	})
+}
+func (fc *FileContent) AddChunks(chunk []Range) {
+	fc.chunks = append(fc.chunks, chunk...)
+}
+
+func (fc *FileContent) tidy() Range {
+	if len(fc.chunks) == 0 {
+		return Range{}
+	}
+	sort.Slice(fc.chunks, func(i, j int) bool {
+		return fc.chunks[i].startLine < fc.chunks[j].startLine
+	})
+	size := len(fc.chunks)
+	r := fc.chunks[0]
+	var res []Range
+	for i := 1; i < size; i++ {
+		chunk := fc.chunks[i]
+		if chunk.startLine <= r.endLine {
+			r.endLine = max(r.endLine, chunk.endLine)
+		} else {
+			res = append(res, r)
+			r = chunk
+		}
+	}
+	res = append(res, r)
+	fc.chunks = res
+	return Range{
+		startLine: res[0].startLine,
+		endLine:   r.endLine,
+	}
+}
+func (fc *FileContent) WriteContent(buf *bytes.Buffer, filepath string) error {
+	file, err := os.Open(filepath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	maxRange := fc.tidy()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		if lineNum < int(maxRange.startLine) {
+			continue // skip until we reach the start
+		}
+		if lineNum == int(maxRange.endLine) {
+			break // stop once we've read the last desired line
+		}
+		lines = append(lines, scanner.Text())
+	}
+	lineSize := len(lines)
+	chunkSize := len(fc.chunks)
+	for i, chunk := range fc.chunks {
+		for i := chunk.startLine; i < chunk.endLine; i++ {
+			lineNum := i - maxRange.startLine
+			if lineNum >= uint(lineSize) {
+				break
+			}
+			buf.WriteString(fmt.Sprintf("%3d| ", i))
+			buf.WriteString(lines[lineNum])
+			buf.WriteByte('\n')
+		}
+		if i != chunkSize-1 {
+			buf.WriteString("...\n")
+		}
+	}
+	return nil
+}
