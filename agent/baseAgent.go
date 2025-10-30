@@ -3,7 +3,11 @@ package agent
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	ctx "llm_dev/context"
+	"llm_dev/model"
 
 	"github.com/rs/zerolog/log"
 	"github.com/sashabaranov/go-openai"
@@ -37,6 +41,8 @@ type BaseAgent struct {
 
 	historyCtx []history
 	fileCtxMgr *ctx.FileContentCtxMgr
+
+	tools []model.ToolDef
 }
 
 func NewBaseAgent(codebase string, model Model) BaseAgent {
@@ -49,7 +55,8 @@ func NewBaseAgent(codebase string, model Model) BaseAgent {
 
 func (agent *BaseAgent) genRequest() (*openai.ChatCompletionRequest, error) {
 	req := openai.ChatCompletionRequest{
-		Model: "",
+		Model:  "openrouter/anthropic/claude-3-5-haiku",
+		Stream: true,
 	}
 
 	var buf bytes.Buffer
@@ -65,18 +72,44 @@ func (agent *BaseAgent) genRequest() (*openai.ChatCompletionRequest, error) {
 		Content: agent.currentUserPrompt,
 	}
 	req.Messages = []openai.ChatCompletionMessage{sysmsg, usermsg}
+	for _, tool := range agent.tools {
+		req.Tools = append(req.Tools, openai.Tool{
+			Type:     openai.ToolTypeFunction,
+			Function: &tool.FunctionDefinition,
+		})
+	}
 	return &req, nil
 }
 
 func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream) {
+	var err error
+	for {
+		res, e := stream.Recv()
+		if e != nil {
+			err = e
+			break
+		}
+		d := res.Choices[0].Delta
+		fmt.Print(d.Content)
+		for _, toolCall := range d.ToolCalls {
+			fmt.Printf("toolCall.Function: %v\n", toolCall.Function)
+		}
+	}
+	if errors.Is(err, io.EOF) {
+
+	} else {
+
+	}
+	agent.finished = true
 }
 
 func (agent *BaseAgent) newReq(userprompt string) {
 	agent.currentUserPrompt = userprompt
 	agent.finished = false
+	agent.tools = agent.fileCtxMgr.GetToolDef()
 	for {
 		req, err := agent.genRequest()
-		if err == nil {
+		if err != nil {
 			log.Error().Err(err).Msg("generate llm request failed")
 			break
 		}

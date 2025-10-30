@@ -15,7 +15,7 @@ import (
 )
 
 var loadFileTool = openai.FunctionDefinition{
-	Name: "",
+	Name: "load_file_context",
 	Description: `
 Load the context of a given file.
 For source code file, it will load all the definition in the source code.
@@ -27,6 +27,9 @@ Use this tool when you want to examine the content in certain file
 		Properties: map[string]jsonschema.Definition{
 			"file": {
 				Type: jsonschema.Array,
+				Items: &jsonschema.Definition{
+					Type: jsonschema.String,
+				},
 				Description: `
 the file path array to load, e.g. ["src/foo.go", "src/test/bar.go"]
 				`,
@@ -37,7 +40,7 @@ the file path array to load, e.g. ["src/foo.go", "src/test/bar.go"]
 }
 
 var loadFileDefsTool = openai.FunctionDefinition{
-	Name: "",
+	Name: "load_definition_context",
 	Description: `
 Load the context of some definition in a given file.
 For example, given code block in file src/foo.go
@@ -64,7 +67,10 @@ use this tool to load context of definiton, you should specify two parameters:
 				Description: "the file path to load, e.g. src/foo.go",
 			},
 			"defsName": {
-				Type:        jsonschema.Array,
+				Type: jsonschema.Array,
+				Items: &jsonschema.Definition{
+					Type: jsonschema.String,
+				},
 				Description: `an array of the definition names you want to load, struct name, function name, variable name, e.g. ["baseUrl", "File", "GetFileContent"]`,
 			},
 		},
@@ -137,6 +143,7 @@ This helps you better understand the functionality of a file or directory from t
 	buf.WriteString("## CODEBASE USED DEFINITION ##\n\n")
 	buf.WriteString(description)
 	buf.WriteString("```\n")
+	// mgr.buildCodeBaseCtxop.ExtractDefs()
 	mgr.fileMap = mgr.buildCodeBaseCtxop.GenFileMap()
 	fileChan := mgr.buildCodeBaseCtxop.WalkProjectFileTree()
 	for file := range fileChan {
@@ -148,7 +155,7 @@ This helps you better understand the functionality of a file or directory from t
 		mgr.writeFdinfo(buf, fdInfo)
 	}
 	buf.WriteString("```\n")
-	buf.WriteString("## END OF CODEBASE USED DEFINITION ##\n")
+	buf.WriteString("## END OF CODEBASE USED DEFINITION ##\n\n")
 }
 func (mgr *FileContentCtxMgr) WriteFileTree(buf *bytes.Buffer) {
 	buf.WriteString("## CODEBASE FILE TREE ##\n\n")
@@ -175,7 +182,7 @@ func (mgr *FileContentCtxMgr) WriteFileTree(buf *bytes.Buffer) {
 		buf.WriteByte('\n')
 	}
 	buf.WriteString("```\n")
-	buf.WriteString("## END OF CODEBASE FILE TREE ##\n")
+	buf.WriteString("## END OF CODEBASE FILE TREE ##\n\n")
 }
 
 func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {

@@ -79,4 +79,5 @@ assistant: src/foo.c
 </example>
 
 [END OF RESPONSE FORMAT]
+
 `
