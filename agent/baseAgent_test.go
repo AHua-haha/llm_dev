@@ -27,7 +27,8 @@ func TestTool(t *testing.T) {
 			fmt.Printf("%s\n", tool.Name)
 			fmt.Printf("%s\n", tool.Description)
 		}
-		req, _ := agent.genRequest()
+		ctx := NewAgentContext("", agent.fileCtxMgr)
+		req, _ := agent.genRequest(ctx)
 		for _, msg := range req.Messages {
 			fmt.Printf("%s\n", msg.Role)
 			fmt.Printf("%s\n", msg.Content)

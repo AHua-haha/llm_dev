@@ -6,6 +6,7 @@ import (
 	"llm_dev/codebase/impl"
 	"llm_dev/database"
 	"llm_dev/model"
+	"llm_dev/utils"
 	"os"
 	"path/filepath"
 	"sort"
@@ -96,19 +97,6 @@ func NewFileCtxMgr(root string) *FileContentCtxMgr {
 	return mgr
 }
 
-func (mgr *FileContentCtxMgr) writeFileContent(buf *bytes.Buffer, relPath string, ranges []impl.ContentRange) {
-	data, err := os.ReadFile(filepath.Join(mgr.rootPath, relPath))
-	if err != nil {
-		return
-	}
-	for _, r := range ranges {
-		s := r[0]
-		e := r[1]
-		buf.Write(data[s:e])
-		buf.WriteByte('\n')
-	}
-}
-
 func (mgr *FileContentCtxMgr) writeFdinfo(buf *bytes.Buffer, fd *impl.FileDirInfo) {
 	contentRange := fd.GetSummary()
 	if len(contentRange) == 0 {
@@ -118,9 +106,9 @@ func (mgr *FileContentCtxMgr) writeFdinfo(buf *bytes.Buffer, fd *impl.FileDirInf
 	}
 	if fd.IsDir {
 		buf.WriteString(fmt.Sprintf("# %s\n\n", fd.RelPath))
-		for file, ranges := range contentRange {
+		for file, filecontent := range contentRange {
 			buf.WriteString(fmt.Sprintf("- %s\n", file))
-			mgr.writeFileContent(buf, file, ranges)
+			filecontent.WriteContent(buf, filepath.Join(mgr.rootPath, file))
 			buf.WriteByte('\n')
 		}
 	} else {
@@ -129,7 +117,7 @@ func (mgr *FileContentCtxMgr) writeFdinfo(buf *bytes.Buffer, fd *impl.FileDirInf
 		}
 		ranges := contentRange[fd.RelPath]
 		buf.WriteString(fmt.Sprintf("# %s\n\n", fd.RelPath))
-		mgr.writeFileContent(buf, fd.RelPath, ranges)
+		ranges.WriteContent(buf, filepath.Join(mgr.rootPath, fd.RelPath))
 		buf.WriteByte('\n')
 	}
 }
@@ -143,7 +131,7 @@ This helps you better understand the functionality of a file or directory from t
 	buf.WriteString("## CODEBASE USED DEFINITION ##\n\n")
 	buf.WriteString(description)
 	buf.WriteString("```\n")
-	// mgr.buildCodeBaseCtxop.ExtractDefs()
+	mgr.buildCodeBaseCtxop.ExtractDefs()
 	mgr.fileMap = mgr.buildCodeBaseCtxop.GenFileMap()
 	fileChan := mgr.buildCodeBaseCtxop.WalkProjectFileTree()
 	for file := range fileChan {
@@ -183,6 +171,20 @@ func (mgr *FileContentCtxMgr) WriteFileTree(buf *bytes.Buffer) {
 	}
 	buf.WriteString("```\n")
 	buf.WriteString("## END OF CODEBASE FILE TREE ##\n\n")
+}
+func (mgr *FileContentCtxMgr) WriteAutoLoadCtx(buf *bytes.Buffer) {
+	description := `
+`
+	buf.WriteString("## CODEBASE LOADED FILE CONTEXT ##\n\n")
+	buf.WriteString(description)
+	buf.WriteString("```\n")
+	for path, codefile := range mgr.autoLoadCtx {
+		fc := codefile.getContent()
+		buf.WriteString(fmt.Sprintf("# %s\n\n", path))
+		fc.WriteContent(buf, filepath.Join(mgr.rootPath, path))
+	}
+	buf.WriteString("```\n")
+	buf.WriteString("## END OF CODEBASE LOADED FILE CONTEXT ##\n\n")
 }
 
 func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
@@ -232,6 +234,16 @@ func NewCodeFile(path string) CodeFile {
 		ext:  filepath.Ext(path),
 	}
 }
+func (file *CodeFile) getContent() utils.FileContent {
+	fc := utils.FileContent{}
+	for _, def := range file.defs {
+		fc.AddChunk(def.Summary)
+	}
+	for _, def := range file.loadedDefs {
+		fc.AddChunk(def.Content)
+	}
+	return fc
+}
 
 func (file *CodeFile) loadAllDefs(op *impl.BuildCodeBaseCtxOps) error {
 	if file.defs != nil {
@@ -257,7 +269,7 @@ func (file *CodeFile) loadDefs(identifier string, op *impl.BuildCodeBaseCtxOps) 
 func addDefs(defs []impl.Definition, new []impl.Definition) []impl.Definition {
 	res := append(defs, new...)
 	sort.Slice(res, func(i, j int) bool {
-		return res[i].Content[0] < res[j].Content[0]
+		return res[i].Content.StartLine < res[j].Content.StartLine
 	})
 	unique := []impl.Definition{}
 	resLen := len(res)

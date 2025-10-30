@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"llm_dev/codebase/common"
 	"llm_dev/database"
+	"llm_dev/utils"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,8 +36,6 @@ const (
 (var_spec) @var
 `
 )
-
-type ContentRange [2]uint
 
 type TypeInfo struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
@@ -72,8 +71,8 @@ type Definition struct {
 	ID         primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
 	Identifier string
 	Keyword    []string
-	Summary    ContentRange
-	Content    ContentRange
+	Summary    utils.Range
+	Content    utils.Range
 	MinPrefix  string
 	RelFile    string
 }
@@ -136,17 +135,15 @@ type FileDirInfo struct {
 	UsedDefs []Definition
 }
 
-func (fd *FileDirInfo) GetSummary() map[string][]ContentRange {
+func (fd *FileDirInfo) GetSummary() map[string]utils.FileContent {
 	defsByFile := fd.getDefByFile()
-	res := make(map[string][]ContentRange, len(defsByFile))
-	for file, ranges := range defsByFile {
-		uniqueRange := []ContentRange{ranges[0].Summary}
-		for i := 1; i < len(ranges); i++ {
-			if ranges[i].Summary != ranges[i-1].Summary {
-				uniqueRange = append(uniqueRange, ranges[i].Summary)
-			}
+	res := make(map[string]utils.FileContent, len(defsByFile))
+	for file, defs := range defsByFile {
+		fc := utils.FileContent{}
+		for _, def := range defs {
+			fc.AddChunk(def.Summary)
 		}
-		res[file] = uniqueRange
+		res[file] = fc
 	}
 	return res
 }
@@ -158,7 +155,7 @@ func (fd *FileDirInfo) getDefByFile() map[string][]Definition {
 	}
 	for _, v := range res {
 		sort.Slice(v, func(i, j int) bool {
-			return v[i].Summary[0] < v[j].Summary[0]
+			return v[i].Summary.StartLine < v[j].Summary.StartLine
 		})
 	}
 	return res
@@ -318,10 +315,19 @@ func (op *BuildCodeBaseCtxOps) genAllDefs() []Definition {
 		Kind := node.Kind()
 		switch Kind {
 		case "method_declaration", "function_declaration":
-			def.Content = [2]uint{node.StartByte(), node.EndByte()}
-			def.Summary = [2]uint{node.StartByte(), node.ChildByFieldName("body").StartByte()}
+			def.Content = utils.Range{
+				StartLine: node.StartPosition().Row + 1,
+				EndLine:   node.EndPosition().Row + 1 + 1,
+			}
+			def.Summary = utils.Range{
+				StartLine: node.StartPosition().Row + 1,
+				EndLine:   node.ChildByFieldName("body").StartPosition().Row + 1 + 1,
+			}
 		default:
-			def.Content = [2]uint{node.StartByte(), node.EndByte()}
+			def.Content = utils.Range{
+				StartLine: node.StartPosition().Row + 1,
+				EndLine:   node.EndPosition().Row + 1 + 1,
+			}
 			def.Summary = def.Content
 		}
 		switch Kind {
@@ -553,10 +559,8 @@ func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan StaticAstCtx {
 				continue
 			}
 			parser := tree_sitter.NewParser()
-			defer parser.Close()
 			parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
 			tree := parser.Parse(data, nil)
-			defer tree.Clone()
 			common.WalkAst(tree.RootNode(), func(root *tree_sitter.Node) bool {
 				output := StaticAstCtx{
 					path:    fileInfo.Path,
@@ -572,6 +576,8 @@ func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan StaticAstCtx {
 					return false
 				}
 			})
+			tree.Clone()
+			parser.Close()
 		}
 		close(outputChan)
 	}()
