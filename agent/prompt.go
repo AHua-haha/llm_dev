@@ -24,7 +24,7 @@ You cannot
 
 To help user with the tasks, yuo SHOULD always:
 - Examine the user's request and available codebase context information
-- Determine what context is truly relevant for the next phase
+- Determine what context is truly relevant for the task.
 - If you need certain context, load the relevant context using the tools provided.
 - If NO additional context is needed, Continue with your response conversationally
 

@@ -170,9 +170,6 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	// op.genAllDefs()
 	defArray := op.genAllDefs()
 	fmt.Printf("len(defArray): %v\n", len(defArray))
-	for _, def := range defArray {
-		fmt.Printf("%s %v\n", def.RelFile, def.Keyword)
-	}
 	op.insertDefs(defArray)
 	fmt.Printf("done\n")
 	usedTypeInfoArray := op.genAllUseInfo()

@@ -52,6 +52,7 @@ func (ctx *AgentContext) done() bool {
 func (ctx *AgentContext) writeContext(buf *bytes.Buffer) {
 	ctx.fileCtxMgr.WriteFileTree(buf)
 	ctx.fileCtxMgr.WriteUsedDefs(buf)
+	ctx.fileCtxMgr.WriteAutoLoadCtx(buf)
 }
 
 func (ctx *AgentContext) toolCall(toolCall openai.FunctionCall) error {
@@ -136,28 +137,38 @@ func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream, ctx 
 		fmt.Print(d.Content)
 		for _, call := range d.ToolCalls {
 			if call.Function.Name != "" {
-				toolCall.Name = call.Function.Name
-				allToolCall = append(allToolCall, toolCall)
-				toolCall = openai.FunctionCall{}
+				if toolCall.Name != "" {
+					allToolCall = append(allToolCall, toolCall)
+				}
+				toolCall = openai.FunctionCall{
+					Name: call.Function.Name,
+				}
 			}
 			if call.Function.Arguments != "" {
 				toolCall.Arguments += call.Function.Arguments
 			}
 		}
 	}
+	fmt.Print("\n")
 	allToolCall = append(allToolCall, toolCall)
 	if !errors.Is(err, io.EOF) {
 		ctx.finished = true
 		return
 	}
 	for _, toolCall := range allToolCall {
-		ctx.toolCall(toolCall)
+		err := ctx.toolCall(toolCall)
+		if err != nil {
+			log.Error().Err(err).Any("toolcall", toolCall).Msg("tool call failed")
+		}
 	}
 }
 
-func (agent *BaseAgent) newReq(userprompt string) {
+func (agent *BaseAgent) NewUserTask(userprompt string) {
 	ctx := NewAgentContext(userprompt, agent.fileCtxMgr)
 	for {
+		var buf bytes.Buffer
+		ctx.fileCtxMgr.WriteAutoLoadCtx(&buf)
+		fmt.Print(buf.String())
 		req, err := agent.genRequest(ctx)
 		if err != nil {
 			log.Error().Err(err).Msg("generate llm request failed")

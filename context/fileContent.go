@@ -2,6 +2,8 @@ package context
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"llm_dev/codebase/impl"
 	"llm_dev/database"
@@ -93,6 +95,7 @@ func NewFileCtxMgr(root string) *FileContentCtxMgr {
 			RootPath: root,
 			Db:       database.GetDBClient().Database("llm_dev"),
 		},
+		autoLoadCtx: make(map[string]*CodeFile),
 	}
 	return mgr
 }
@@ -127,11 +130,11 @@ func (mgr *FileContentCtxMgr) WriteUsedDefs(buf *bytes.Buffer) {
 This section shows the definition under certain file or firectory that is being used by some code that is not under the same file or directory.
 So fot certain file or directory, the definiton that is only used within the same file or directory is omitted。
 This helps you better understand the functionality of a file or directory from the perspective of the whole codebase.
+
 `
 	buf.WriteString("## CODEBASE USED DEFINITION ##\n\n")
 	buf.WriteString(description)
 	buf.WriteString("```\n")
-	mgr.buildCodeBaseCtxop.ExtractDefs()
 	mgr.fileMap = mgr.buildCodeBaseCtxop.GenFileMap()
 	fileChan := mgr.buildCodeBaseCtxop.WalkProjectFileTree()
 	for file := range fileChan {
@@ -174,6 +177,13 @@ func (mgr *FileContentCtxMgr) WriteFileTree(buf *bytes.Buffer) {
 }
 func (mgr *FileContentCtxMgr) WriteAutoLoadCtx(buf *bytes.Buffer) {
 	description := `
+This section shows all the dynamic loaded context in this codebase.
+You should:
+- Examine the user's request and available codebase context information
+- Determine what context is truly relevant for the task.
+- If you need certain context, load the relevant context using the tools provided.
+- If NO additional context is needed, Continue with your response conversationally
+
 `
 	buf.WriteString("## CODEBASE LOADED FILE CONTEXT ##\n\n")
 	buf.WriteString(description)
@@ -188,17 +198,57 @@ func (mgr *FileContentCtxMgr) WriteAutoLoadCtx(buf *bytes.Buffer) {
 }
 
 func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
-	handler := func(args string) {
-		mgr.loadFile("")
+	loadFileHandler := func(argsStr string) (string, error) {
+		args := struct {
+			File []string
+		}{}
+		err := json.Unmarshal([]byte(argsStr), &args)
+		if err != nil {
+			return "", err
+		}
+		res := ""
+		var e error
+		for _, v := range args.File {
+			err := mgr.loadFile(v)
+			if err != nil {
+				res += fmt.Sprintf("load file context for %s failed, error: %v\n", v, err)
+				e = errors.Join(e, err)
+			} else {
+				res += fmt.Sprintf("load file context for %s successn", v)
+			}
+		}
+		return res, e
+	}
+	loadDefsHandler := func(argsStr string) (string, error) {
+		args := struct {
+			File     string
+			DefsName []string
+		}{}
+		err := json.Unmarshal([]byte(argsStr), &args)
+		if err != nil {
+			return "", err
+		}
+		res := ""
+		var e error
+		for _, name := range args.DefsName {
+			err := mgr.loadDefs(args.File, name)
+			if err != nil {
+				res += fmt.Sprintf("load file %s %s definition failed, error: %v\n", args.File, name, err)
+				e = errors.Join(e, err)
+			} else {
+				res += fmt.Sprintf("load file %s %s definition success\n", args.File, name)
+			}
+		}
+		return res, e
 	}
 	var res []model.ToolDef
 	res = append(res, model.ToolDef{
 		FunctionDefinition: loadFileTool,
-		Handler:            handler,
+		Handler:            loadFileHandler,
 	})
 	res = append(res, model.ToolDef{
 		FunctionDefinition: loadFileDefsTool,
-		Handler:            handler,
+		Handler:            loadDefsHandler,
 	})
 	return res
 }
@@ -252,7 +302,7 @@ func (file *CodeFile) loadAllDefs(op *impl.BuildCodeBaseCtxOps) error {
 	filter := impl.GenDefFilter(&file.path, nil, nil)
 	res := op.FindDefs(filter)
 	if len(res) == 0 {
-		return fmt.Errorf("load file %s all definition fail", file.path)
+		return fmt.Errorf("file %s definition empty", file.path)
 	}
 	file.defs = res
 	return nil
@@ -261,7 +311,7 @@ func (file *CodeFile) loadDefs(identifier string, op *impl.BuildCodeBaseCtxOps) 
 	filter := impl.GenDefFilter(&file.path, &identifier, nil)
 	res := op.FindDefs(filter)
 	if len(res) == 0 {
-		return fmt.Errorf("load file %s %s definition fail", file.path, identifier)
+		return fmt.Errorf("file %s %s definition not found", file.path, identifier)
 	}
 	file.loadedDefs = addDefs(file.loadedDefs, res)
 	return nil

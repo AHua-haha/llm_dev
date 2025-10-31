@@ -17,7 +17,7 @@ type StreamRes struct {
 	err     error
 }
 
-type ToolHandler func(args string)
+type ToolHandler func(args string) (string, error)
 
 type ToolDef struct {
 	openai.FunctionDefinition
