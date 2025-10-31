@@ -3,7 +3,6 @@ package context
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"llm_dev/codebase/impl"
 	"llm_dev/database"
@@ -207,17 +206,15 @@ func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
 			return "", err
 		}
 		res := ""
-		var e error
 		for _, v := range args.File {
 			err := mgr.loadFile(v)
 			if err != nil {
 				res += fmt.Sprintf("load file context for %s failed, error: %v\n", v, err)
-				e = errors.Join(e, err)
 			} else {
-				res += fmt.Sprintf("load file context for %s successn", v)
+				res += fmt.Sprintf("load file context for %s success\n", v)
 			}
 		}
-		return res, e
+		return res, nil
 	}
 	loadDefsHandler := func(argsStr string) (string, error) {
 		args := struct {
@@ -229,17 +226,15 @@ func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
 			return "", err
 		}
 		res := ""
-		var e error
 		for _, name := range args.DefsName {
 			err := mgr.loadDefs(args.File, name)
 			if err != nil {
 				res += fmt.Sprintf("load file %s %s definition failed, error: %v\n", args.File, name, err)
-				e = errors.Join(e, err)
 			} else {
 				res += fmt.Sprintf("load file %s %s definition success\n", args.File, name)
 			}
 		}
-		return res, e
+		return res, nil
 	}
 	var res []model.ToolDef
 	res = append(res, model.ToolDef{

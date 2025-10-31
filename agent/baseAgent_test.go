@@ -15,7 +15,7 @@ func TestBaseAgent_genRequest(t *testing.T) {
 		// 	Db:       database.GetDBClient().Database("llm_dev"),
 		// }
 		// op.ExtractDefs()
-		model := NewModel("http://172.17.0.1:4000", "sk-1234")
+		model := NewModel("http://192.168.65.2:4000", "sk-1234")
 		agent := NewBaseAgent("/root/workspace/llm_dev", *model)
 		agent.NewUserTask("tell me how this project extract definition using treesitter")
 	})
@@ -33,7 +33,7 @@ func TestTool(t *testing.T) {
 			fmt.Printf("%s\n", tool.Description)
 		}
 		ctx := NewAgentContext("", agent.fileCtxMgr)
-		req, _ := agent.genRequest(ctx)
+		req := ctx.genRequest(systemPompt)
 		for _, msg := range req.Messages {
 			fmt.Printf("%s\n", msg.Role)
 			fmt.Printf("%s\n", msg.Content)
