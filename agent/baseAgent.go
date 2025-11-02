@@ -32,30 +32,45 @@ func NewModel(baseurl string, apikey string) *Model {
 type AgentContext struct {
 	userPrompt     string
 	history        []openai.ChatCompletionMessage
+	preTaskHistory []openai.ChatCompletionMessage
 	finished       bool
 	fileCtxMgr     *ctx.FileContentCtxMgr
 	toolHandlerMap map[string]model.ToolDef
 }
 
-func NewAgentContext(userprompt string, fileCtxMgr *ctx.FileContentCtxMgr) *AgentContext {
+func NewAgentContext(preHistory []openai.ChatCompletionMessage, userprompt string, fileCtxMgr *ctx.FileContentCtxMgr) *AgentContext {
 	ctx := AgentContext{
 		userPrompt:     userprompt,
 		finished:       false,
 		fileCtxMgr:     fileCtxMgr,
 		toolHandlerMap: make(map[string]model.ToolDef),
+		preTaskHistory: preHistory,
 	}
 	ctx.registerTool(fileCtxMgr.GetToolDef())
 	return &ctx
 }
+func (ctx *AgentContext) getResult() []openai.ChatCompletionMessage {
+	usermsg := openai.ChatCompletionMessage{
+		Role:    "user",
+		Content: ctx.userPrompt,
+	}
+	res := []openai.ChatCompletionMessage{usermsg}
+	historyLen := len(ctx.history)
+	if historyLen != 0 {
+		res = append(res, ctx.history[historyLen-1])
+	}
+	return res
+}
 func (ctx *AgentContext) genRequest(sysPrompt string) openai.ChatCompletionRequest {
 	req := openai.ChatCompletionRequest{
-		Model:  "openrouter/anthropic/claude-3-5-haiku",
+		Model:  "openrouter/anthropic/claude-sonnet-4",
 		Stream: true,
 	}
 
 	var buf bytes.Buffer
 	buf.WriteString(sysPrompt)
 	ctx.writeContext(&buf)
+	req.Messages = []openai.ChatCompletionMessage{}
 	sysmsg := openai.ChatCompletionMessage{
 		Role:    "system",
 		Content: buf.String(),
@@ -64,7 +79,9 @@ func (ctx *AgentContext) genRequest(sysPrompt string) openai.ChatCompletionReque
 		Role:    "user",
 		Content: ctx.userPrompt,
 	}
-	req.Messages = []openai.ChatCompletionMessage{sysmsg, usermsg}
+	req.Messages = append(req.Messages, sysmsg)
+	req.Messages = append(req.Messages, ctx.preTaskHistory...)
+	req.Messages = append(req.Messages, usermsg)
 	req.Messages = append(req.Messages, ctx.history...)
 	for _, tool := range ctx.toolHandlerMap {
 		req.Tools = append(req.Tools, openai.Tool{
@@ -115,14 +132,10 @@ func (ctx *AgentContext) registerTool(tools []model.ToolDef) {
 	}
 }
 
-type history struct {
-	userPrompt string
-	resp       string
-}
 type BaseAgent struct {
 	model Model
 
-	historyCtx []history
+	history    []openai.ChatCompletionMessage
 	fileCtxMgr *ctx.FileContentCtxMgr
 }
 
@@ -182,7 +195,7 @@ func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream, ctx 
 		}
 		aggregate.addChunk(d)
 	}
-	fmt.Print("\n")
+	fmt.Print("\n\n")
 	if !errors.Is(err, io.EOF) {
 		ctx.finished = true
 		return
@@ -204,9 +217,10 @@ func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream, ctx 
 }
 
 func (agent *BaseAgent) NewUserTask(userprompt string) {
-	ctx := NewAgentContext(userprompt, agent.fileCtxMgr)
+	ctx := NewAgentContext(agent.history, userprompt, agent.fileCtxMgr)
 	for {
 		var buf bytes.Buffer
+		// ctx.fileCtxMgr.WriteUsedDefs(&buf)
 		ctx.fileCtxMgr.WriteAutoLoadCtx(&buf)
 		fmt.Print(buf.String())
 		req := ctx.genRequest(systemPompt)
@@ -220,4 +234,5 @@ func (agent *BaseAgent) NewUserTask(userprompt string) {
 			break
 		}
 	}
+	agent.history = append(agent.history, ctx.getResult()...)
 }

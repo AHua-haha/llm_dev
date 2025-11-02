@@ -2,6 +2,7 @@ package impl
 
 import (
 	"fmt"
+	"llm_dev/codebase/common"
 	"llm_dev/database"
 	"testing"
 )
@@ -67,5 +68,19 @@ func TestBuildCtx(t *testing.T) {
 		for f := range file {
 			fmt.Printf("%s\n", f.Path)
 		}
+	})
+}
+
+func TestGenAllDefs(t *testing.T) {
+	t.Run("test gen all Defs", func(t *testing.T) {
+		common.InitLsp()
+		defer common.CloseLsp()
+		database.InitDB()
+		defer database.CloseDB()
+		op := BuildCodeBaseCtxOps{
+			RootPath: "/root/workspace/llm_dev",
+			Db:       database.GetDBClient().Database("llm_dev"),
+		}
+		op.genAllDefs()
 	})
 }

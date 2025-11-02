@@ -84,13 +84,13 @@ type FileContentCtxMgr struct {
 	rootPath           string
 	fileMap            map[string]*impl.FileDirInfo
 	autoLoadCtx        map[string]*CodeFile
-	buildCodeBaseCtxop *impl.BuildCodeBaseCtxOps
+	BuildCodeBaseCtxop *impl.BuildCodeBaseCtxOps
 }
 
 func NewFileCtxMgr(root string) *FileContentCtxMgr {
 	mgr := &FileContentCtxMgr{
 		rootPath: root,
-		buildCodeBaseCtxop: &impl.BuildCodeBaseCtxOps{
+		BuildCodeBaseCtxop: &impl.BuildCodeBaseCtxOps{
 			RootPath: root,
 			Db:       database.GetDBClient().Database("llm_dev"),
 		},
@@ -134,8 +134,8 @@ This helps you better understand the functionality of a file or directory from t
 	buf.WriteString("## CODEBASE USED DEFINITION ##\n\n")
 	buf.WriteString(description)
 	buf.WriteString("```\n")
-	mgr.fileMap = mgr.buildCodeBaseCtxop.GenFileMap()
-	fileChan := mgr.buildCodeBaseCtxop.WalkProjectFileTree()
+	mgr.fileMap = mgr.BuildCodeBaseCtxop.GenFileMap()
+	fileChan := mgr.BuildCodeBaseCtxop.WalkProjectFileTree()
 	for file := range fileChan {
 		relPath, _ := filepath.Rel(mgr.rootPath, file.Path)
 		fdInfo := mgr.fileMap[relPath]
@@ -151,7 +151,7 @@ func (mgr *FileContentCtxMgr) WriteFileTree(buf *bytes.Buffer) {
 	buf.WriteString("## CODEBASE FILE TREE ##\n\n")
 	buf.WriteString("This section shows the file tree structure of the codebase.\n")
 	buf.WriteString("```\n")
-	fileChan := mgr.buildCodeBaseCtxop.WalkProjectFileTree()
+	fileChan := mgr.BuildCodeBaseCtxop.WalkProjectFileTree()
 	for file := range fileChan {
 		if !file.D.IsDir() {
 			continue
@@ -254,7 +254,7 @@ func (mgr *FileContentCtxMgr) loadFile(relPath string) error {
 		mgr.autoLoadCtx[relPath] = &codeFile
 	}
 	codeFile := mgr.autoLoadCtx[relPath]
-	return codeFile.loadAllDefs(mgr.buildCodeBaseCtxop)
+	return codeFile.loadAllDefs(mgr.BuildCodeBaseCtxop)
 }
 func (mgr *FileContentCtxMgr) loadDefs(relPath string, identifier string) error {
 	if mgr.autoLoadCtx[relPath] == nil {
@@ -262,7 +262,7 @@ func (mgr *FileContentCtxMgr) loadDefs(relPath string, identifier string) error 
 		mgr.autoLoadCtx[relPath] = &codeFile
 	}
 	codeFile := mgr.autoLoadCtx[relPath]
-	return codeFile.loadDefs(identifier, mgr.buildCodeBaseCtxop)
+	return codeFile.loadDefs(identifier, mgr.BuildCodeBaseCtxop)
 }
 
 type CodeFile struct {

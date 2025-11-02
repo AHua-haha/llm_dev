@@ -78,6 +78,15 @@ user: which file contains the implementation of foo?
 assistant: src/foo.c
 </example>
 
+# Code References
+
+When referencing specific functions or pieces of code include the pattern ` + "`file_path:line_number`" + ` to allow the user to easily navigate to the source code location.
+
+<example>
+user: Where are errors from the client handled?
+assistant: Clients are marked as failed in the ` + "`connectToServer`" + ` function in src/services/process.ts:712.
+</example>
+
 [END OF RESPONSE FORMAT]
 
 `
