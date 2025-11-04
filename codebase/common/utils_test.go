@@ -3,8 +3,11 @@ package common
 import (
 	"fmt"
 	"io/fs"
+	"path/filepath"
 	"testing"
 
+	"github.com/rs/zerolog/log"
+	ignore "github.com/sabhiram/go-gitignore"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
 )
@@ -309,5 +312,28 @@ func TestClose(t *testing.T) {
 		tree.Clone()
 		root := tree.RootNode().Child(3)
 		fmt.Printf("root.Utf8Text([]byte(src_code)): \n%v\n", root.Utf8Text([]byte(src_code)))
+	})
+}
+
+func TestWalkFileTree(t *testing.T) {
+	root := "/root/workspace/llm_dev"
+	ig, err := ignore.CompileIgnoreFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		log.Error().Msgf("compile ignore failed")
+		return
+	}
+	t.Run("test walk file tree", func(t *testing.T) {
+		ctx := WalkFileTree(root, func(ctx *ContextHandler, level uint) bool {
+			var path string
+			ctx.Get("path", &path)
+			relPath, _ := filepath.Rel(root, path)
+			fmt.Printf("relPath: %v\n", relPath)
+			if ig.MatchesPath(relPath) {
+				return false
+			} else {
+				return true
+			}
+		})
+		<-ctx.OutputChan
 	})
 }

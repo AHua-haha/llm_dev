@@ -3,16 +3,21 @@ package common
 import (
 	"bufio"
 	"fmt"
+	"go/ast"
+	"go/token"
 	"io/fs"
 	_ "llm_dev/utils"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/tools/go/packages"
 
 	ignore "github.com/sabhiram/go-gitignore"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
 )
 
 type TSQuery struct {
@@ -254,4 +259,129 @@ func CommonRootDir(path1, path2 string) string {
 	}
 
 	return filepath.Join(commonParts...)
+}
+
+type HandlerFunc func(ctx *ContextHandler, level uint) bool
+
+type ContextHandler struct {
+	OutputChan chan map[string]any
+	ctxValue   map[string]any
+	handler    HandlerFunc
+}
+
+func NewContextHandler(bufferSize uint, handler HandlerFunc) ContextHandler {
+	return ContextHandler{
+		OutputChan: make(chan map[string]any, bufferSize),
+		ctxValue:   make(map[string]any),
+		handler:    handler,
+	}
+}
+
+func (ctx *ContextHandler) Set(key string, value any) {
+	ctx.ctxValue[key] = value
+}
+
+func (ctx *ContextHandler) Get(key string, dst any) {
+	val, exist := ctx.ctxValue[key]
+	if !exist {
+		log.Fatal().Any("key", key).Msg("key does not exist")
+	}
+	dstVal := reflect.ValueOf(dst)
+	if dstVal.Kind() != reflect.Pointer {
+		log.Fatal().Msg("dst is not a pointer")
+	}
+
+	targetType := dstVal.Elem().Type() // type of the value pointed to
+	valType := reflect.TypeOf(val)
+
+	if !valType.AssignableTo(targetType) {
+		log.Fatal().Any("value type", valType).Any("dst type", targetType).Msg("type not match")
+	}
+	dstVal.Elem().Set(reflect.ValueOf(val))
+}
+
+func (ctx *ContextHandler) ProcessCtx(level uint) bool {
+	return ctx.handler(ctx, level)
+}
+
+func WalkFileStaticAst(filePath string, handler HandlerFunc) *ContextHandler {
+	ctx := NewContextHandler(10, handler)
+	go func() {
+		defer close(ctx.OutputChan)
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			log.Error().Msgf("read file error %s", err)
+			return
+		}
+		ctx.Set("file", filePath)
+		ctx.Set("data", data)
+		parser := tree_sitter.NewParser()
+		parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
+		tree := parser.Parse(data, nil)
+		defer tree.Clone()
+		defer parser.Close()
+		WalkAst(tree.RootNode(), func(root *tree_sitter.Node) bool {
+			ctx.Set("node", root)
+			return ctx.ProcessCtx(0)
+		})
+	}()
+	return &ctx
+}
+
+func WalkGoProjectTypeAst(rootPath string, handler HandlerFunc) *ContextHandler {
+	ctx := NewContextHandler(10, handler)
+	go func() {
+		defer close(ctx.OutputChan)
+		cfg := &packages.Config{
+			Mode:  packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedFiles,
+			Fset:  token.NewFileSet(),
+			Dir:   rootPath,
+			Tests: true,
+		}
+		ctx.Set("root", rootPath)
+
+		pkgs, err := packages.Load(cfg, "./...")
+		if err != nil {
+			log.Error().Err(err).Msg("type check project fail")
+			return
+		}
+		for _, pkg := range pkgs {
+			for i, file := range pkg.Syntax {
+				fileName := pkg.GoFiles[i]
+				ctx.Set("file", fileName)
+				if !ctx.ProcessCtx(0) {
+					continue
+				}
+				ast.Inspect(file, func(n ast.Node) bool {
+					ctx.Set("node", n)
+					return ctx.ProcessCtx(1)
+				})
+			}
+		}
+	}()
+	return &ctx
+}
+
+func WalkFileTree(rootPath string, handler HandlerFunc) *ContextHandler {
+	ctx := NewContextHandler(10, handler)
+	go func() {
+		defer close(ctx.OutputChan)
+		ctx.Set("root", rootPath)
+		filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
+			ctx.Set("path", path)
+			ctx.Set("direntry", d)
+			walkChild := ctx.ProcessCtx(0)
+			if !d.IsDir() {
+				return nil
+			} else {
+				if walkChild {
+					return nil
+				} else {
+					return fs.SkipDir
+				}
+			}
+		})
+
+	}()
+	return &ctx
 }
