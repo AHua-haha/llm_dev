@@ -337,3 +337,26 @@ func TestWalkFileTree(t *testing.T) {
 		<-ctx.OutputChan
 	})
 }
+
+func TestWalkAst(t *testing.T) {
+	file := "/root/workspace/llm_dev/codebase/common/utils_test.go"
+	t.Run("test walk file tree", func(t *testing.T) {
+		ctx := WalkFileStaticAst(file, func(ctx *ContextHandler, level uint) bool {
+			var node *tree_sitter.Node
+			var data []byte
+			ctx.Get("node", &node)
+			ctx.Get("data", &data)
+			kind := node.Kind()
+			switch kind {
+			case "source_file":
+				return true
+			default:
+				r := node.Range()
+				content := data[r.StartByte:r.EndByte]
+				fmt.Printf("%s\n", string(content))
+				return false
+			}
+		})
+		<-ctx.OutputChan
+	})
+}
