@@ -217,6 +217,34 @@ func (op *BuildCodeBaseCtxOps) GenFileMap() map[string]*FileDirInfo {
 	}
 	return fileMap
 }
+func (op *BuildCodeBaseCtxOps) typeCtxHandler(ctx *common.ContextHandler, level uint) bool {
+	if level == 0 {
+		file := common.GetAs[string](ctx, "file")
+		walkChild := strings.HasPrefix(file, op.RootPath)
+		return walkChild
+	}
+	if level == 1 {
+		common.GetAs[string](ctx, "file")
+		node := common.GetAs[ast.Node](ctx, "node")
+		common.GetAs[*packages.Package](ctx, "pkg")
+		switch node := node.(type) {
+		case *ast.File:
+			return true
+		case *ast.FuncDecl:
+			fmt.Printf("node.Name: %v\n", node.Name)
+			return false
+		case *ast.TypeSpec:
+			fmt.Printf("node.Name: %v\n", node.Name)
+			return false
+		case *ast.ValueSpec:
+			fmt.Printf("node.Name: %v\n", node.Names)
+			return false
+		default:
+			return true
+		}
+	}
+	return false
+}
 
 func (op *BuildCodeBaseCtxOps) genAllUseInfo() []TypeInfo {
 	moduleName, err := common.GetModulePath(filepath.Join(op.RootPath, "go.mod"))

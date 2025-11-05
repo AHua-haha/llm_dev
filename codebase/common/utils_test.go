@@ -324,8 +324,7 @@ func TestWalkFileTree(t *testing.T) {
 	}
 	t.Run("test walk file tree", func(t *testing.T) {
 		ctx := WalkFileTree(root, func(ctx *ContextHandler, level uint) bool {
-			var path string
-			ctx.Get("path", &path)
+			path := GetAs[string](ctx, "path")
 			relPath, _ := filepath.Rel(root, path)
 			fmt.Printf("relPath: %v\n", relPath)
 			if ig.MatchesPath(relPath) {
@@ -342,10 +341,8 @@ func TestWalkAst(t *testing.T) {
 	file := "/root/workspace/llm_dev/codebase/common/utils_test.go"
 	t.Run("test walk file tree", func(t *testing.T) {
 		ctx := WalkFileStaticAst(file, func(ctx *ContextHandler, level uint) bool {
-			var node *tree_sitter.Node
-			var data []byte
-			ctx.Get("node", &node)
-			ctx.Get("data", &data)
+			node := GetAs[*tree_sitter.Node](ctx, "node")
+			data := GetAs[[]byte](ctx, "data")
 			kind := node.Kind()
 			switch kind {
 			case "source_file":

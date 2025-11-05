@@ -9,7 +9,6 @@ import (
 	_ "llm_dev/utils"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -281,23 +280,16 @@ func (ctx *ContextHandler) Set(key string, value any) {
 	ctx.ctxValue[key] = value
 }
 
-func (ctx *ContextHandler) Get(key string, dst any) {
-	val, exist := ctx.ctxValue[key]
+func GetAs[T any](ctx *ContextHandler, key string) T {
+	value, exist := ctx.ctxValue[key]
 	if !exist {
 		log.Fatal().Any("key", key).Msg("key does not exist")
 	}
-	dstVal := reflect.ValueOf(dst)
-	if dstVal.Kind() != reflect.Pointer {
-		log.Fatal().Msg("dst is not a pointer")
+	dst, ok := value.(T)
+	if !ok && value != nil {
+		log.Fatal().Msg("type does not match")
 	}
-
-	targetType := dstVal.Elem().Type() // type of the value pointed to
-	valType := reflect.TypeOf(val)
-
-	if !valType.AssignableTo(targetType) {
-		log.Fatal().Any("value type", valType).Any("dst type", targetType).Msg("type not match")
-	}
-	dstVal.Elem().Set(reflect.ValueOf(val))
+	return dst
 }
 
 func (ctx *ContextHandler) ProcessCtx(level uint) bool {
@@ -346,6 +338,7 @@ func WalkGoProjectTypeAst(rootPath string, handler HandlerFunc) *ContextHandler 
 			return
 		}
 		for _, pkg := range pkgs {
+			ctx.Set("pkg", pkg)
 			for i, file := range pkg.Syntax {
 				fileName := pkg.GoFiles[i]
 				ctx.Set("file", fileName)

@@ -84,3 +84,14 @@ func TestGenAllDefs(t *testing.T) {
 		op.genAllDefs()
 	})
 }
+
+func TestTypeCtxHandler(t *testing.T) {
+	t.Run("test type info ctx handler", func(t *testing.T) {
+		root := "/root/workspace/llm_dev"
+		op := BuildCodeBaseCtxOps{
+			RootPath: root,
+		}
+		ctx := common.WalkGoProjectTypeAst(root, op.typeCtxHandler)
+		<-ctx.OutputChan
+	})
+}
