@@ -196,15 +196,13 @@ type UsedDef struct {
 }
 
 func NewUseDef(loc types.Object, usedDef types.Object) UsedDef {
-	id, key, file := genTypeInfo(loc)
-	useid, usekey, usefile := genTypeInfo(usedDef)
+	id, key := genTypeInfo(loc)
+	useid, usekey := genTypeInfo(usedDef)
 	res := UsedDef{
 		Identifier:    id,
 		Keyword:       key,
-		File:          file,
 		DefIdentifier: useid,
 		DefKeyword:    usekey,
-		DefFile:       usefile,
 	}
 	return res
 }
@@ -216,9 +214,9 @@ func (use *UsedDef) AddDefKeyword(value string) {
 	use.DefKeyword = append(use.DefKeyword, value)
 }
 
-func genTypeInfo(obj types.Object) (string, []string, string) {
+func genTypeInfo(obj types.Object) (string, []string) {
 	def := Definition{}
-	var identifier, file string
+	var identifier string
 	var keyword []string
 	switch obj := obj.(type) {
 	case *types.Var:
@@ -249,7 +247,7 @@ func genTypeInfo(obj types.Object) (string, []string, string) {
 	default:
 		log.Fatal().Msg("unsupported node type")
 	}
-	return identifier, keyword, file
+	return identifier, keyword
 }
 
 func GenDefFilter(relfile *string, identifier *string, keyword []string) bson.M {
@@ -346,6 +344,37 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	op.genAllDefs()
 	fmt.Printf("done\n")
 }
+func (op *BuildCodeBaseCtxOps) GenAllUsedDefs() {
+	ctx := common.WalkGoProjectTypeAst(op.RootPath, op.typeCtxHandler)
+	for res := range ctx.OutputChan {
+		common.GetMapas[[]UsedDef](res, "used Defs")
+	}
+}
+func (op *BuildCodeBaseCtxOps) GenAllDefs() {
+	ctx := common.WalkFileTree(op.RootPath, op.fileTreeCtxHandler())
+	goFiles := []string{}
+	for res := range ctx.OutputChan {
+		path := common.GetMapas[string](res, "path")
+		d := common.GetMapas[fs.DirEntry](res, "direntry")
+		ext := filepath.Ext(d.Name())
+		if d.IsDir() || ext != ".go" {
+			continue
+		}
+		goFiles = append(goFiles, path)
+	}
+	InitTSQuery()
+	defer CloseTSQuery()
+	for _, file := range goFiles {
+		ctx := common.WalkFileStaticAst(file, op.astCtxHandler)
+		fmt.Printf("file: %v\n", file)
+		for res := range ctx.OutputChan {
+			defs := common.GetMapas[[]Definition](res, "defs")
+			for _, def := range defs {
+				fmt.Printf("  %s %v\n", def.Identifier, def.Keyword)
+			}
+		}
+	}
+}
 func (op *BuildCodeBaseCtxOps) GenFileMap() map[string]*FileDirInfo {
 	fileChan := op.WalkProjectFileTree()
 	fileMap := make(map[string]*FileDirInfo)
@@ -395,6 +424,8 @@ func (op *BuildCodeBaseCtxOps) extractUsedTypeInfo(ctx *common.ContextHandler, t
 	mainModule := common.GetAs[*packages.Module](ctx, "mainModule")
 	existMap := make(map[types.Object]struct{})
 	s, e := node.Pos(), node.End()
+	rootPos := cfg.Fset.Position(s)
+	relPath, _ := filepath.Rel(op.RootPath, rootPos.Filename)
 	checkPos := func(p token.Pos) bool {
 		pos := cfg.Fset.Position(p)
 		if pos.Filename == "" {
@@ -442,6 +473,10 @@ func (op *BuildCodeBaseCtxOps) extractUsedTypeInfo(ctx *common.ContextHandler, t
 		default:
 			continue
 		}
+		p := cfg.Fset.Position(obj.Pos())
+		objRelPath, _ := filepath.Rel(op.RootPath, p.Filename)
+		useDef.File = relPath
+		useDef.DefFile = objRelPath
 		path := obj.Pkg().Path()
 		if !strings.HasPrefix(path, mainModule.Path) {
 			useDef.Isdependency = true
@@ -532,8 +567,9 @@ func (op *BuildCodeBaseCtxOps) fileTreeCtxHandler() common.HandlerFunc {
 				return false
 			}
 			ctx.OutputChan <- map[string]any{
-				"path":    path,
-				"relPath": relPath,
+				"path":     path,
+				"relPath":  relPath,
+				"direntry": d,
 			}
 			return true
 		}

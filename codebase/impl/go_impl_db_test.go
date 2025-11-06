@@ -141,3 +141,12 @@ func TestFileTreeHanler(t *testing.T) {
 		}
 	})
 }
+
+func TestGenDefs(t *testing.T) {
+	t.Run("test type info ctx handler", func(t *testing.T) {
+		op := BuildCodeBaseCtxOps{
+			RootPath: "/root/workspace/llm_dev",
+		}
+		op.GenAllDefs()
+	})
+}
