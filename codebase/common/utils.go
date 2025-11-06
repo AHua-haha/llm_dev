@@ -276,10 +276,24 @@ func NewContextHandler(bufferSize uint, handler HandlerFunc) ContextHandler {
 	}
 }
 
+func (ctx *ContextHandler) Push(res map[string]any) {
+	ctx.OutputChan <- res
+}
 func (ctx *ContextHandler) Set(key string, value any) {
 	ctx.ctxValue[key] = value
 }
 
+func GetMapas[T any](kv map[string]any, key string) T {
+	value, exist := kv[key]
+	if !exist {
+		log.Fatal().Any("key", key).Msg("key does not exist")
+	}
+	dst, ok := value.(T)
+	if !ok && value != nil {
+		log.Fatal().Msg("type does not match")
+	}
+	return dst
+}
 func GetAs[T any](ctx *ContextHandler, key string) T {
 	value, exist := ctx.ctxValue[key]
 	if !exist {
@@ -325,11 +339,12 @@ func WalkGoProjectTypeAst(rootPath string, handler HandlerFunc) *ContextHandler 
 	go func() {
 		defer close(ctx.OutputChan)
 		cfg := &packages.Config{
-			Mode:  packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedFiles,
+			Mode:  packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedFiles | packages.NeedModule,
 			Fset:  token.NewFileSet(),
 			Dir:   rootPath,
 			Tests: true,
 		}
+		ctx.Set("cfg", cfg)
 		ctx.Set("root", rootPath)
 
 		pkgs, err := packages.Load(cfg, "./...")
@@ -337,6 +352,18 @@ func WalkGoProjectTypeAst(rootPath string, handler HandlerFunc) *ContextHandler 
 			log.Error().Err(err).Msg("type check project fail")
 			return
 		}
+		var mainModule *packages.Module
+		for _, pkg := range pkgs {
+			if pkg.Module != nil && pkg.Module.Main {
+				mainModule = pkg.Module
+				break
+			}
+		}
+		if mainModule == nil {
+			log.Error().Msg("main module not found")
+			return
+		}
+		ctx.Set("mainModule", mainModule)
 		for _, pkg := range pkgs {
 			ctx.Set("pkg", pkg)
 			for i, file := range pkg.Syntax {

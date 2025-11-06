@@ -92,6 +92,22 @@ func TestTypeCtxHandler(t *testing.T) {
 			RootPath: root,
 		}
 		ctx := common.WalkGoProjectTypeAst(root, op.typeCtxHandler)
-		<-ctx.OutputChan
+		for res := range ctx.OutputChan {
+			usedDefs := common.GetMapas[[]UsedDef](res, "used Defs")
+			fmt.Printf("len(usedDefs): %v\n", len(usedDefs))
+			if len(usedDefs) == 0 {
+				continue
+			}
+			loc := usedDefs[0]
+			fmt.Printf("%s %s %v uses:\n", loc.File, loc.Identifier, loc.Keyword)
+			for _, used := range usedDefs {
+				if used.Isdependency {
+					fmt.Printf("  %s %s %v %s\n", used.DefFile, used.DefIdentifier, used.DefKeyword, used.PkgPath)
+				} else {
+					fmt.Printf("  %s %s %v\n", used.DefFile, used.DefIdentifier, used.DefKeyword)
+				}
+			}
+		}
+		fmt.Println()
 	})
 }

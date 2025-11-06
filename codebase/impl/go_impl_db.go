@@ -78,6 +78,75 @@ type Definition struct {
 	RelFile    string
 }
 
+type UsedDef struct {
+	ID            primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
+	Identifier    string
+	Keyword       []string
+	File          string
+	DefIdentifier string
+	DefKeyword    []string
+	DefFile       string
+	PkgPath       string
+	Isdependency  bool
+}
+
+func NewUseDef(loc types.Object, usedDef types.Object) UsedDef {
+	id, key, file := genTypeInfo(loc)
+	useid, usekey, usefile := genTypeInfo(usedDef)
+	res := UsedDef{
+		Identifier:    id,
+		Keyword:       key,
+		File:          file,
+		DefIdentifier: useid,
+		DefKeyword:    usekey,
+		DefFile:       usefile,
+	}
+	return res
+}
+
+func (use *UsedDef) AddKeyword(value string) {
+	use.Keyword = append(use.Keyword, value)
+}
+func (use *UsedDef) AddDefKeyword(value string) {
+	use.DefKeyword = append(use.DefKeyword, value)
+}
+
+func genTypeInfo(obj types.Object) (string, []string, string) {
+	def := Definition{}
+	var identifier, file string
+	var keyword []string
+	switch obj := obj.(type) {
+	case *types.Var:
+		typeName := obj.Type().String()
+		idx := strings.LastIndex(typeName, ".")
+		shortName := typeName[idx+1:]
+		identifier = obj.Name()
+		keyword = []string{"var", obj.Name(), shortName}
+	case *types.PkgName:
+		identifier = obj.Name()
+		keyword = []string{"package", obj.Name()}
+	case *types.TypeName:
+		identifier = obj.Name()
+		keyword = []string{"type", obj.Name()}
+	case *types.Func:
+		identifier = obj.Name()
+		rece := obj.Signature().Recv()
+		if rece != nil {
+			typeName := rece.Type().String()
+			idx := strings.LastIndex(typeName, ".")
+			shortName := typeName[idx+1:]
+			def.AddKeyword("method")
+			def.AddKeyword(shortName)
+			keyword = []string{"method", shortName, obj.Name()}
+		} else {
+			keyword = []string{"function", obj.Name()}
+		}
+	default:
+		log.Fatal().Msg("unsupported node type")
+	}
+	return identifier, keyword, file
+}
+
 func GenDefFilter(relfile *string, identifier *string, keyword []string) bson.M {
 	builder := database.NewFilter()
 	if relfile != nil {
@@ -217,6 +286,71 @@ func (op *BuildCodeBaseCtxOps) GenFileMap() map[string]*FileDirInfo {
 	}
 	return fileMap
 }
+func (op *BuildCodeBaseCtxOps) extractUsedTypeInfo(ctx *common.ContextHandler, typeObj types.Object) []UsedDef {
+	cfg := common.GetAs[*packages.Config](ctx, "cfg")
+	file := common.GetAs[string](ctx, "file")
+	node := common.GetAs[ast.Node](ctx, "node")
+	pkg := common.GetAs[*packages.Package](ctx, "pkg")
+	mainModule := common.GetAs[*packages.Module](ctx, "mainModule")
+	existMap := make(map[types.Object]struct{})
+	s, e := node.Pos(), node.End()
+	checkPos := func(p token.Pos) bool {
+		pos := cfg.Fset.Position(p)
+		if pos.Filename == "" {
+			return false
+		}
+		if pos.Filename != file {
+			return true
+		}
+		if p >= s && p < e {
+			return false
+		}
+		return true
+	}
+	ast.Inspect(node, func(n ast.Node) bool {
+		ident, ok := n.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		typeObj := pkg.TypesInfo.Uses[ident]
+		if typeObj == nil {
+			return true
+		}
+		if _, exist := existMap[typeObj]; exist {
+			return true
+		}
+		p := typeObj.Pos()
+		if !checkPos(p) {
+			return true
+		}
+		existMap[typeObj] = struct{}{}
+
+		return true
+	})
+	res := []UsedDef{}
+	for obj := range existMap {
+		var useDef UsedDef
+		switch obj := obj.(type) {
+		case *types.Var:
+			if obj.IsField() {
+				continue
+			}
+			useDef = NewUseDef(typeObj, obj)
+		case *types.TypeName, *types.Func:
+			useDef = NewUseDef(typeObj, obj)
+		default:
+			continue
+		}
+		path := obj.Pkg().Path()
+		if !strings.HasPrefix(path, mainModule.Path) {
+			useDef.Isdependency = true
+			useDef.PkgPath = path
+			useDef.DefFile = ""
+		}
+		res = append(res, useDef)
+	}
+	return res
+}
 func (op *BuildCodeBaseCtxOps) typeCtxHandler(ctx *common.ContextHandler, level uint) bool {
 	if level == 0 {
 		file := common.GetAs[string](ctx, "file")
@@ -224,20 +358,30 @@ func (op *BuildCodeBaseCtxOps) typeCtxHandler(ctx *common.ContextHandler, level 
 		return walkChild
 	}
 	if level == 1 {
-		common.GetAs[string](ctx, "file")
 		node := common.GetAs[ast.Node](ctx, "node")
-		common.GetAs[*packages.Package](ctx, "pkg")
+		pkg := common.GetAs[*packages.Package](ctx, "pkg")
 		switch node := node.(type) {
 		case *ast.File:
 			return true
 		case *ast.FuncDecl:
-			fmt.Printf("node.Name: %v\n", node.Name)
+			// fmt.Printf("node.Name: %v\n", node.Name)
+			typeObj := pkg.TypesInfo.Defs[node.Name]
+			if typeObj != nil {
+				usedDefs := op.extractUsedTypeInfo(ctx, typeObj)
+				ctx.Push(map[string]any{
+					"used Defs": usedDefs,
+				})
+			}
 			return false
 		case *ast.TypeSpec:
-			fmt.Printf("node.Name: %v\n", node.Name)
-			return false
-		case *ast.ValueSpec:
-			fmt.Printf("node.Name: %v\n", node.Names)
+			// fmt.Printf("node.Name: %v\n", node.Name)
+			typeObj := pkg.TypesInfo.Defs[node.Name]
+			if typeObj != nil {
+				usedDefs := op.extractUsedTypeInfo(ctx, typeObj)
+				ctx.Push(map[string]any{
+					"used Defs": usedDefs,
+				})
+			}
 			return false
 		default:
 			return true
