@@ -343,6 +343,21 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	// op.genAllDefs()
 	fmt.Printf("done\n")
 }
+func (op *BuildCodeBaseCtxOps) FindUsedDefOutline(relpath string) []Definition {
+	relpath = filepath.Clean(relpath)
+	filter := bson.M{
+		"minprefix": bson.M{
+			"$not": bson.M{
+				"$regex": fmt.Sprintf("^%s(/|$)", relpath),
+			},
+		},
+		"relfile": bson.M{
+			"$regex": fmt.Sprintf("^%s(/|$)", relpath),
+		},
+	}
+	result := op.FindDefs(filter)
+	return result
+}
 func (op *BuildCodeBaseCtxOps) GenAllUsedDefs() {
 	ctx := common.WalkGoProjectTypeAst(op.RootPath, op.typeCtxHandler)
 	for res := range ctx.OutputChan {
@@ -594,6 +609,7 @@ func (op *BuildCodeBaseCtxOps) astCtxHandler(ctx *common.ContextHandler, level u
 			relFile, _ := filepath.Rel(op.RootPath, file)
 			for i := range defs {
 				defs[i].RelFile = relFile
+				defs[i].MinPrefix = relFile
 			}
 			ctx.OutputChan <- map[string]any{
 				"defs": defs,

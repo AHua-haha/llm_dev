@@ -155,3 +155,21 @@ func TestSetMinPrefix(t *testing.T) {
 		op.SetMinPreFix()
 	})
 }
+
+func TestFileOutline(t *testing.T) {
+	t.Run("test set min prefix", func(t *testing.T) {
+		database.InitDB()
+		defer database.CloseDB()
+		op := BuildCodeBaseCtxOps{
+			RootPath: "/root/workspace/llm_dev",
+			Db:       database.GetDBClient().Database("llm_dev"),
+		}
+		// op.GenAllDefs()
+		// op.GenAllUsedDefs()
+		// op.SetMinPreFix()
+		defs := op.FindUsedDefOutline("")
+		for _, def := range defs {
+			fmt.Printf("%s %s %s\n", def.RelFile, def.Identifier, def.MinPrefix)
+		}
+	})
+}
