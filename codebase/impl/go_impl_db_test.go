@@ -128,3 +128,16 @@ func TestAstCtxHandler(t *testing.T) {
 		fmt.Println()
 	})
 }
+
+func TestFileTreeHanler(t *testing.T) {
+	t.Run("test type info ctx handler", func(t *testing.T) {
+		op := BuildCodeBaseCtxOps{
+			RootPath: "/root/workspace/llm_dev",
+		}
+		ctx := common.WalkFileTree("/root/workspace/llm_dev", op.fileTreeCtxHandler())
+		for res := range ctx.OutputChan {
+			relPath := common.GetMapas[string](res, "relPath")
+			fmt.Printf("relPath: %v\n", relPath)
+		}
+	})
+}

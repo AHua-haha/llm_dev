@@ -10,6 +10,7 @@ import (
 	"llm_dev/codebase/common"
 	"llm_dev/database"
 	"llm_dev/utils"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -513,6 +514,32 @@ func (op *BuildCodeBaseCtxOps) astCtxHandler(ctx *common.ContextHandler, level u
 		}
 	}
 	return false
+}
+func (op *BuildCodeBaseCtxOps) fileTreeCtxHandler() common.HandlerFunc {
+	ig, err := ignore.CompileIgnoreFile(filepath.Join(op.RootPath, ".gitignore"))
+	if err != nil {
+		log.Error().Msgf("compile ignore failed")
+	}
+	handlerFunc := func(ctx *common.ContextHandler, level uint) bool {
+		if level == 0 {
+			path := common.GetAs[string](ctx, "path")
+			d := common.GetAs[fs.DirEntry](ctx, "direntry")
+			relPath, _ := filepath.Rel(op.RootPath, path)
+			if d.Type()&os.ModeSymlink != 0 {
+				return false
+			}
+			if ig != nil && ig.MatchesPath(relPath) {
+				return false
+			}
+			ctx.OutputChan <- map[string]any{
+				"path":    path,
+				"relPath": relPath,
+			}
+			return true
+		}
+		return false
+	}
+	return handlerFunc
 }
 
 func (op *BuildCodeBaseCtxOps) genAllDefs() {
