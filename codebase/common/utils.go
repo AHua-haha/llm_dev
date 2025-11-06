@@ -43,8 +43,20 @@ func NewTSQuery(queryStr string, lang *tree_sitter.Language) (*TSQuery, error) {
 func (q *TSQuery) Close() {
 	q.query.Close()
 }
+func (q *TSQuery) QueryStr(root *tree_sitter.Node, data []byte) []string {
+	queryRes := q.Query(root, data)
+	strRes := make([]string, len(queryRes))
+
+	for i, elem := range queryRes {
+		strRes[i] = elem.Node.Utf8Text(data)
+	}
+	return strRes
+}
 
 func (q *TSQuery) Query(root *tree_sitter.Node, data []byte) []QueryRes {
+	if root == nil {
+		return nil
+	}
 	cursor := tree_sitter.NewQueryCursor()
 	defer cursor.Close()
 	matches := cursor.Matches(q.query, root, data)

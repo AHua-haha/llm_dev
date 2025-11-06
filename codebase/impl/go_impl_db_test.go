@@ -111,3 +111,20 @@ func TestTypeCtxHandler(t *testing.T) {
 		fmt.Println()
 	})
 }
+
+func TestAstCtxHandler(t *testing.T) {
+	t.Run("test type info ctx handler", func(t *testing.T) {
+		file := "/root/workspace/llm_dev/codebase/impl/go_impl_db_test.go"
+		op := BuildCodeBaseCtxOps{
+			RootPath: "/root/workspace/llm_dev",
+		}
+		ctx := common.WalkFileStaticAst(file, op.astCtxHandler)
+		for res := range ctx.OutputChan {
+			defs := common.GetMapas[[]Definition](res, "defs")
+			for _, def := range defs {
+				fmt.Printf("%s %s %v\n", def.RelFile, def.Identifier, def.Keyword)
+			}
+		}
+		fmt.Println()
+	})
+}

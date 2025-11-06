@@ -10,7 +10,6 @@ import (
 	"llm_dev/codebase/common"
 	"llm_dev/database"
 	"llm_dev/utils"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -36,6 +35,38 @@ const (
 (var_spec) @var
 `
 )
+
+var typeTSQuery *common.TSQuery
+var nameTSQuery *common.TSQuery
+var varTSQuery *common.TSQuery
+
+func InitTSQuery() {
+	var err error
+	lang := tree_sitter.NewLanguage(golang.Language())
+	typeTSQuery, err = common.NewTSQuery(typeQueryStr, lang)
+	if err != nil {
+		log.Fatal().Err(err).Msg("init query failed")
+	}
+	nameTSQuery, err = common.NewTSQuery(nameQueryStr, lang)
+	if err != nil {
+		log.Fatal().Err(err).Msg("init query failed")
+	}
+	varTSQuery, err = common.NewTSQuery(varSpecQueryStr, lang)
+	if err != nil {
+		log.Fatal().Err(err).Msg("init query failed")
+	}
+}
+func CloseTSQuery() {
+	if typeTSQuery != nil {
+		typeTSQuery.Close()
+	}
+	if nameTSQuery != nil {
+		nameTSQuery.Close()
+	}
+	if varTSQuery != nil {
+		varTSQuery.Close()
+	}
+}
 
 type TypeInfo struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"` // Maps to MongoDB _id
@@ -76,6 +107,79 @@ type Definition struct {
 	Content    utils.Range
 	MinPrefix  string
 	RelFile    string
+}
+
+func NewDef(node *tree_sitter.Node, data []byte) []Definition {
+	defs := []Definition{}
+	def := Definition{}
+	Kind := node.Kind()
+	switch Kind {
+	case "method_declaration", "function_declaration":
+		def.Content = utils.Range{
+			StartLine: node.StartPosition().Row + 1,
+			EndLine:   node.EndPosition().Row + 1 + 1,
+		}
+		def.Summary = utils.Range{
+			StartLine: node.StartPosition().Row + 1,
+			EndLine:   node.ChildByFieldName("body").StartPosition().Row + 1 + 1,
+		}
+	default:
+		def.Content = utils.Range{
+			StartLine: node.StartPosition().Row + 1,
+			EndLine:   node.EndPosition().Row + 1 + 1,
+		}
+		def.Summary = def.Content
+	}
+	switch Kind {
+	case "var_declaration":
+		res := varTSQuery.Query(node, data)
+		for _, value := range res {
+			name := value.Node.ChildByFieldName("name").Utf8Text(data)
+			typeNode := value.Node.ChildByFieldName("type")
+			types := typeTSQuery.QueryStr(typeNode, data)
+			def.Identifier = name
+			def.Keyword = append(def.Keyword, "var", name)
+			def.Keyword = append(def.Keyword, types...)
+			defs = append(defs, def)
+		}
+	case "short_var_declaration":
+		res := nameTSQuery.Query(node, data)
+		for _, value := range res {
+			name := value.Node.Utf8Text(data)
+			def.Identifier = name
+			def.Keyword = []string{"var", name}
+			defs = append(defs, def)
+		}
+	case "package_clause":
+		identifier := node.Child(1).Utf8Text(data)
+		def.Identifier = identifier
+		def.Keyword = []string{"package", identifier}
+		defs = append(defs, def)
+	case "import_declaration":
+		def.Keyword = []string{"import"}
+		defs = append(defs, def)
+	case "type_declaration":
+		identifier := node.Child(1).ChildByFieldName("name").Utf8Text(data)
+		def.Identifier = identifier
+		def.Keyword = []string{"type", identifier}
+		defs = append(defs, def)
+	case "function_declaration":
+		name := node.ChildByFieldName("name").Utf8Text(data)
+		def.Identifier = name
+		def.Keyword = []string{"function", name}
+		defs = append(defs, def)
+	case "method_declaration":
+		receiver := node.ChildByFieldName("receiver")
+		name := node.ChildByFieldName("name").Utf8Text(data)
+		types := typeTSQuery.QueryStr(receiver, data)
+		def.Identifier = name
+		def.Keyword = []string{"method", name}
+		def.Keyword = append(def.Keyword, types...)
+		defs = append(defs, def)
+	default:
+		log.Fatal().Msg("unsupported treesitter node type")
+	}
+	return defs
 }
 
 type UsedDef struct {
@@ -240,10 +344,6 @@ func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	// op.genAllDefs()
 	op.genAllDefs()
 	fmt.Printf("done\n")
-	usedTypeInfoArray := op.genAllUseInfo()
-	fmt.Printf("len(usedTypeInfoArray): %v\n", len(usedTypeInfoArray))
-	fmt.Printf("done\n")
-	op.setMinPrefix(usedTypeInfoArray)
 }
 func (op *BuildCodeBaseCtxOps) GenFileMap() map[string]*FileDirInfo {
 	fileChan := op.WalkProjectFileTree()
@@ -389,216 +489,34 @@ func (op *BuildCodeBaseCtxOps) typeCtxHandler(ctx *common.ContextHandler, level 
 	}
 	return false
 }
+func (op *BuildCodeBaseCtxOps) astCtxHandler(ctx *common.ContextHandler, level uint) bool {
+	if level == 0 {
+		file := common.GetAs[string](ctx, "file")
+		data := common.GetAs[[]byte](ctx, "data")
+		node := common.GetAs[*tree_sitter.Node](ctx, "node")
 
-func (op *BuildCodeBaseCtxOps) genAllUseInfo() []TypeInfo {
-	moduleName, err := common.GetModulePath(filepath.Join(op.RootPath, "go.mod"))
-	if err != nil {
-		return nil
-	}
-	ctxChan := op.walkProjectTypeAst()
-	res := []TypeInfo{}
-
-	for ctx := range ctxChan {
-		p := ctx.pos
-		obj := ctx.obj
-		relPath, _ := filepath.Rel(op.RootPath, ctx.path)
-		var typeInfo TypeInfo
-		typeInfo.UseFile = relPath
-		typeInfo.Identifier = obj.Name()
-		pkgPath := obj.Pkg().Path()
-		if strings.HasPrefix(pkgPath, moduleName) {
-			declare_file, _ := filepath.Rel(op.RootPath, p.Filename)
-			typeInfo.DeclareFile = declare_file
-			typeInfo.IsDependency = false
-		} else {
-			typeInfo.addKeyword(pkgPath)
-			typeInfo.IsDependency = true
-		}
-		switch obj := obj.(type) {
-		case *types.Var:
-			if obj.IsField() {
-				continue
+		kind := node.Kind()
+		switch kind {
+		case "source_file":
+			return true
+		case "var_declaration", "short_var_declaration", "package_clause", "import_declaration", "type_declaration", "function_declaration", "method_declaration":
+			defs := NewDef(node, data)
+			relFile, _ := filepath.Rel(op.RootPath, file)
+			for i := range defs {
+				defs[i].RelFile = relFile
 			}
-			typeName := obj.Type().String()
-			typeInfo.addKeyword("var")
-			typeInfo.addKeyword(obj.Name())
-			idx := strings.LastIndex(typeName, ".")
-			shortName := typeName[idx+1:]
-			typeInfo.addKeyword(shortName)
-		case *types.PkgName:
-			typeInfo.addKeyword("package")
-			typeInfo.addKeyword(obj.Name())
-		case *types.TypeName:
-			typeInfo.addKeyword("type")
-			typeInfo.addKeyword(obj.Name())
-		case *types.Func:
-			rece := obj.Signature().Recv()
-			if rece != nil {
-				typeInfo.addKeyword("method")
-				typeName := rece.Type().String()
-				idx := strings.LastIndex(typeName, ".")
-				shortName := typeName[idx+1:]
-				typeInfo.addKeyword(shortName)
-			} else {
-				typeInfo.addKeyword("function")
+			ctx.OutputChan <- map[string]any{
+				"defs": defs,
 			}
-			typeInfo.addKeyword(obj.Name())
 		default:
-			continue
+			return false
 		}
-		res = append(res, typeInfo)
 	}
-	return res
-}
-func (op *BuildCodeBaseCtxOps) genDefinition(ctx *StaticAstCtx) []Definition {
-	lang := tree_sitter.NewLanguage(golang.Language())
-	typeQuery, err := common.NewTSQuery(typeQueryStr, lang)
-	if err != nil {
-		log.Error().Err(err).Msg("init query failed")
-		return nil
-	}
-	defer typeQuery.Close()
-	nameQuery, err := common.NewTSQuery(nameQueryStr, lang)
-	if err != nil {
-		log.Error().Err(err).Msg("init query failed")
-		return nil
-	}
-	defer nameQuery.Close()
-	varQuery, err := common.NewTSQuery(varSpecQueryStr, lang)
-	if err != nil {
-		log.Error().Err(err).Msg("init query failed")
-		return nil
-	}
-	defer varQuery.Close()
-	getString := func(n *tree_sitter.Node) string {
-		return n.Utf8Text(ctx.data)
-	}
-	relPath, _ := filepath.Rel(op.RootPath, ctx.path)
-	defs := []Definition{}
-	var def Definition
-	def.RelFile = relPath
-	def.MinPrefix = relPath
-	node := ctx.astNode
-	Kind := node.Kind()
-	switch Kind {
-	case "method_declaration", "function_declaration":
-		def.Content = utils.Range{
-			StartLine: node.StartPosition().Row + 1,
-			EndLine:   node.EndPosition().Row + 1 + 1,
-		}
-		def.Summary = utils.Range{
-			StartLine: node.StartPosition().Row + 1,
-			EndLine:   node.ChildByFieldName("body").StartPosition().Row + 1 + 1,
-		}
-	default:
-		def.Content = utils.Range{
-			StartLine: node.StartPosition().Row + 1,
-			EndLine:   node.EndPosition().Row + 1 + 1,
-		}
-		def.Summary = def.Content
-	}
-	switch Kind {
-	case "var_declaration":
-		def.AddKeyword("var")
-		res := varQuery.Query(node, ctx.data)
-		for _, value := range res {
-			name := value.Node.ChildByFieldName("name")
-			p := name.StartPosition()
-			def.Point = common.Point{
-				Line:   p.Row,
-				Column: p.Column,
-			}
-			def.Identifier = getString(name)
-			def.AddKeyword(def.Identifier)
-			typeNode := value.Node.ChildByFieldName("type")
-			if typeNode != nil {
-				types := typeQuery.Query(typeNode, ctx.data)
-				for _, value := range types {
-					def.AddKeyword(getString(value.Node))
-				}
-			}
-			defs = append(defs, def)
-		}
-	case "short_var_declaration":
-		def.AddKeyword("var")
-		res := nameQuery.Query(node, ctx.data)
-		for _, value := range res {
-			name := getString(value.Node)
-			p := value.Node.StartPosition()
-			def.Point = common.Point{
-				Line:   p.Row,
-				Column: p.Column,
-			}
-			def.Identifier = name
-			def.AddKeyword(name)
-			defs = append(defs, def)
-		}
-	case "package_clause":
-		identifier := node.Child(1)
-		def.Identifier = getString(identifier)
-		def.AddKeyword("package")
-		def.AddKeyword(getString(identifier))
-		defs = append(defs, def)
-	case "import_declaration":
-		def.AddKeyword("import")
-		defs = append(defs, def)
-	case "type_declaration":
-		identifier := node.Child(1).ChildByFieldName("name")
-		p := identifier.StartPosition()
-		def.Point = common.Point{
-			Line:   p.Row,
-			Column: p.Column,
-		}
-		def.Identifier = getString(identifier)
-		def.AddKeyword("type")
-		def.AddKeyword(getString(identifier))
-		defs = append(defs, def)
-	case "function_declaration":
-		name := node.ChildByFieldName("name")
-		p := name.StartPosition()
-		def.Point = common.Point{
-			Line:   p.Row,
-			Column: p.Column,
-		}
-		def.Identifier = getString(name)
-		def.AddKeyword("function")
-		def.AddKeyword(getString(name))
-		defs = append(defs, def)
-	case "method_declaration":
-		receiver := node.ChildByFieldName("receiver")
-		name := node.ChildByFieldName("name")
-		p := name.StartPosition()
-		def.Point = common.Point{
-			Line:   p.Row,
-			Column: p.Column,
-		}
-		def.Identifier = getString(name)
-		def.AddKeyword("method")
-		res := typeQuery.Query(receiver, ctx.data)
-		for _, value := range res {
-			def.AddKeyword(getString(value.Node))
-		}
-		def.AddKeyword(getString(name))
-		defs = append(defs, def)
-
-	default:
-	}
-	return defs
+	return false
 }
 
 func (op *BuildCodeBaseCtxOps) genAllDefs() {
-	fileDefsChan := op.walkPojectStaticAst()
-	for fileDefs := range fileDefsChan {
-		args := common.RequestDefinitionArgs{
-			File: fileDefs.path,
-		}
-		fmt.Printf("fileDefs.path: %v\n", fileDefs.path)
-		for _, def := range fileDefs.defs {
-			args.Loc = append(args.Loc, def.Point)
-		}
-		common.G_lspClient.RequestDefinition(args)
-		break
-	}
+
 }
 func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
 	findExcatDef := func(useInfo TypeInfo) *Definition {
@@ -684,120 +602,6 @@ func (op *BuildCodeBaseCtxOps) FindDefs(filter bson.M) []Definition {
 		return nil
 	}
 	return result
-}
-
-type typeAstCtx struct {
-	path string
-	obj  types.Object
-	pos  token.Position
-}
-
-func (op *BuildCodeBaseCtxOps) walkProjectTypeAst() <-chan typeAstCtx {
-	outputChan := make(chan typeAstCtx, 10)
-	go func() {
-		defer close(outputChan)
-		cfg := &packages.Config{
-			Mode:  packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedFiles,
-			Fset:  token.NewFileSet(),
-			Dir:   op.RootPath,
-			Tests: true,
-		}
-
-		pkgs, err := packages.Load(cfg, "./...")
-		if err != nil {
-			log.Error().Err(err).Msg("type check project fail")
-			return
-		}
-		for _, pkg := range pkgs {
-			for i, file := range pkg.Syntax {
-				typeMap := make(map[types.Object]struct{})
-				fileName := pkg.GoFiles[i]
-				if !strings.HasPrefix(fileName, op.RootPath) {
-					continue
-				}
-				ast.Inspect(file, func(n ast.Node) bool {
-					ident, ok := n.(*ast.Ident)
-					if !ok {
-						return true
-					}
-					obj := pkg.TypesInfo.Uses[ident]
-					if obj == nil {
-						return true
-					}
-					pos := cfg.Fset.Position(obj.Pos())
-					if pos.Filename == fileName || pos.Filename == "" {
-						return true
-					}
-					typeMap[obj] = struct{}{}
-					return true
-				})
-				for k, _ := range typeMap {
-					outputChan <- typeAstCtx{
-						path: fileName,
-						obj:  k,
-						pos:  cfg.Fset.Position(k.Pos()),
-					}
-				}
-			}
-		}
-	}()
-	return outputChan
-}
-
-type StaticAstCtx struct {
-	path    string
-	data    []byte
-	astNode *tree_sitter.Node
-}
-
-type FileAllDefs struct {
-	path string
-	defs []Definition
-}
-
-func (op *BuildCodeBaseCtxOps) walkPojectStaticAst() <-chan FileAllDefs {
-	outputChan := make(chan FileAllDefs, 10)
-	go func() {
-		fileChan := op.WalkProjectFileTree()
-		for fileInfo := range fileChan {
-			if fileInfo.D.IsDir() || filepath.Ext(fileInfo.D.Name()) != ".go" {
-				continue
-			}
-			data, err := os.ReadFile(fileInfo.Path)
-			if err != nil {
-				log.Error().Msgf("read file error %s", err)
-				continue
-			}
-			relPath, _ := filepath.Rel(op.RootPath, fileInfo.Path)
-			fmt.Printf("relPath: %v\n", relPath)
-			fileAllDefs := FileAllDefs{
-				path: relPath,
-			}
-			ctx := StaticAstCtx{
-				path: relPath,
-				data: data,
-			}
-			parser := tree_sitter.NewParser()
-			parser.SetLanguage(tree_sitter.NewLanguage(golang.Language()))
-			tree := parser.Parse(data, nil)
-			defer tree.Clone()
-			defer parser.Close()
-			common.WalkAst(tree.RootNode(), func(root *tree_sitter.Node) bool {
-				ctx.astNode = root
-				fileAllDefs.defs = append(fileAllDefs.defs, op.genDefinition(&ctx)...)
-				Kind := root.Kind()
-				switch Kind {
-				case "source_file":
-					return true
-				default:
-					return false
-				}
-			})
-			outputChan <- fileAllDefs
-		}
-		close(outputChan)
-	}()
-	return outputChan
 }
 
 type FileTreeCtx struct {
