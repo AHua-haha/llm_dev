@@ -341,13 +341,13 @@ type BuildCodeBaseCtxOps struct {
 
 func (op *BuildCodeBaseCtxOps) ExtractDefs() {
 	// op.genAllDefs()
-	op.genAllDefs()
 	fmt.Printf("done\n")
 }
 func (op *BuildCodeBaseCtxOps) GenAllUsedDefs() {
 	ctx := common.WalkGoProjectTypeAst(op.RootPath, op.typeCtxHandler)
 	for res := range ctx.OutputChan {
-		common.GetMapas[[]UsedDef](res, "used Defs")
+		usedDef := common.GetMapas[[]UsedDef](res, "used Defs")
+		op.insertUsedTypeInfo(usedDef)
 	}
 }
 func (op *BuildCodeBaseCtxOps) GenAllDefs() {
@@ -365,16 +365,70 @@ func (op *BuildCodeBaseCtxOps) GenAllDefs() {
 	InitTSQuery()
 	defer CloseTSQuery()
 	for _, file := range goFiles {
+		fileAlldefs := []Definition{}
 		ctx := common.WalkFileStaticAst(file, op.astCtxHandler)
-		fmt.Printf("file: %v\n", file)
 		for res := range ctx.OutputChan {
 			defs := common.GetMapas[[]Definition](res, "defs")
-			for _, def := range defs {
-				fmt.Printf("  %s %v\n", def.Identifier, def.Keyword)
+			fileAlldefs = append(fileAlldefs, defs...)
+		}
+		op.insertDefs(fileAlldefs)
+	}
+}
+
+func (op *BuildCodeBaseCtxOps) SetMinPreFix() {
+	usedDef := make(map[string]*Definition)
+	collection := op.Db.Collection("Used")
+	cursor, err := collection.Find(context.TODO(), bson.M{})
+	if err != nil {
+		log.Error().Err(err).Msg("find used definition fail")
+		return
+	}
+	defer cursor.Close(context.TODO())
+	for cursor.Next(context.TODO()) {
+		var useInfo UsedDef
+		if err := cursor.Decode(&useInfo); err != nil {
+			log.Error().Err(err).Msg("decode doc to UseDef fail")
+			continue
+		}
+		if useInfo.Isdependency {
+			continue
+		}
+		key := useInfo.DefFile + " " + strings.Join(useInfo.DefKeyword, " ")
+		def, exist := usedDef[key]
+		if !exist {
+			usedDef[key] = &Definition{
+				RelFile:    useInfo.DefFile,
+				Identifier: useInfo.DefIdentifier,
+				Keyword:    useInfo.DefKeyword,
+				MinPrefix:  useInfo.DefFile,
 			}
+			continue
+		}
+
+		minPrefix := common.CommonRootDir(def.MinPrefix, useInfo.File)
+		if minPrefix == def.MinPrefix {
+			continue
+		}
+		def.MinPrefix = minPrefix
+	}
+
+	for _, def := range usedDef {
+		finddef, err := op.FindOneDef(*def)
+		if err != nil {
+			log.Error().Err(err).Msg("find one def fail")
+			continue
+		}
+		update := def.genUpdate("minprefix")
+		collection := op.Db.Collection("Defs")
+		_, err = collection.UpdateByID(context.TODO(), finddef.ID, update)
+		if err != nil {
+			log.Error().Err(err).Any("def", def).Msg("update definition failed")
+		} else {
+			log.Info().Any("def keyword", def.Keyword).Msg("update def minprefix")
 		}
 	}
 }
+
 func (op *BuildCodeBaseCtxOps) GenFileMap() map[string]*FileDirInfo {
 	fileChan := op.WalkProjectFileTree()
 	fileMap := make(map[string]*FileDirInfo)
@@ -578,61 +632,46 @@ func (op *BuildCodeBaseCtxOps) fileTreeCtxHandler() common.HandlerFunc {
 	return handlerFunc
 }
 
-func (op *BuildCodeBaseCtxOps) genAllDefs() {
+func (op *BuildCodeBaseCtxOps) FindOneDef(def Definition) (*Definition, error) {
+	filter := GenDefFilter(&def.RelFile, &def.Identifier, nil)
+	res := op.FindDefs(filter)
+	resLen := len(res)
+	if resLen == 1 {
+		return &res[0], nil
+	}
+	if resLen == 0 {
+		return nil, fmt.Errorf("def not found: %s %s", def.RelFile, def.Identifier)
+	}
+	matchCount := make([]int, resLen)
+	defKeyMap := make(map[string]struct{}, len(def.Keyword))
+	for _, str := range def.Keyword {
+		defKeyMap[str] = struct{}{}
+	}
+	max := 0
+	for i, elem := range res {
+		for _, str := range elem.Keyword {
+			if _, exist := defKeyMap[str]; exist {
+				matchCount[i]++
+			}
+		}
+		if matchCount[i] > max {
+			max = matchCount[i]
+		}
+	}
+	idx := 0
+	maxCountCount := 0
+	for i, count := range matchCount {
+		if count == max {
+			maxCountCount++
+			idx = i
+		}
+	}
+	if maxCountCount > 1 {
+		return nil, fmt.Errorf("found multiple definition: %s %s %v", def.RelFile, def.Identifier, def.Keyword)
+	}
+	return &res[idx], nil
+}
 
-}
-func (op *BuildCodeBaseCtxOps) setMinPrefix(usedTypeInfos []TypeInfo) {
-	findExcatDef := func(useInfo TypeInfo) *Definition {
-		var identifier *string = nil
-		if useInfo.Identifier != "" {
-			identifier = &useInfo.Identifier
-		}
-		var def Definition
-		foundExcat := false
-		size := len(useInfo.Keyword)
-		for i := range size {
-			keyword := useInfo.Keyword[:i]
-			filter := GenDefFilter(&useInfo.DeclareFile, identifier, keyword)
-			res := op.FindDefs(filter)
-			resLen := len(res)
-			if resLen == 0 {
-				break
-			}
-			if resLen == 1 {
-				foundExcat = true
-				def = res[0]
-				break
-			}
-		}
-		if foundExcat {
-			return &def
-		}
-		return nil
-	}
-	for _, useInfo := range usedTypeInfos {
-		if useInfo.IsDependency {
-			continue
-		}
-		def := findExcatDef(useInfo)
-		if def == nil {
-			log.Error().Any("keyword", useInfo.Keyword).Msg("do not fund excat def")
-			continue
-		}
-		minPrefix := common.CommonRootDir(def.MinPrefix, useInfo.UseFile)
-		if minPrefix == def.MinPrefix {
-			continue
-		}
-		def.MinPrefix = minPrefix
-		update := def.genUpdate("minprefix")
-		collection := op.Db.Collection("Defs")
-		_, err := collection.UpdateByID(context.TODO(), def.ID, update)
-		if err != nil {
-			log.Error().Err(err).Any("def", def).Msg("update definition failed")
-		} else {
-			log.Info().Any("def keyword", def.Keyword).Msg("update def minprefix")
-		}
-	}
-}
 func ToAnySlice[T any](input []T) []any {
 	result := make([]any, len(input))
 	for i, v := range input {
@@ -640,9 +679,9 @@ func ToAnySlice[T any](input []T) []any {
 	}
 	return result
 }
-func (op *BuildCodeBaseCtxOps) insertUsedTypeInfo(array []TypeInfo) {
+func (op *BuildCodeBaseCtxOps) insertUsedTypeInfo(array []UsedDef) {
 	anySlice := ToAnySlice(array)
-	op.Db.Collection("Uses").InsertMany(context.TODO(), anySlice)
+	op.Db.Collection("Used").InsertMany(context.TODO(), anySlice)
 }
 
 func (op *BuildCodeBaseCtxOps) insertDefs(array []Definition) {

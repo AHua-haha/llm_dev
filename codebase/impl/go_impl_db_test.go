@@ -73,15 +73,6 @@ func TestBuildCtx(t *testing.T) {
 
 func TestGenAllDefs(t *testing.T) {
 	t.Run("test gen all Defs", func(t *testing.T) {
-		common.InitLsp()
-		defer common.CloseLsp()
-		database.InitDB()
-		defer database.CloseDB()
-		op := BuildCodeBaseCtxOps{
-			RootPath: "/root/workspace/llm_dev",
-			Db:       database.GetDBClient().Database("llm_dev"),
-		}
-		op.genAllDefs()
 	})
 }
 
@@ -148,5 +139,19 @@ func TestGenDefs(t *testing.T) {
 			RootPath: "/root/workspace/llm_dev",
 		}
 		op.GenAllDefs()
+	})
+}
+
+func TestSetMinPrefix(t *testing.T) {
+	t.Run("test set min prefix", func(t *testing.T) {
+		database.InitDB()
+		defer database.CloseDB()
+		op := BuildCodeBaseCtxOps{
+			RootPath: "/root/workspace/llm_dev",
+			Db:       database.GetDBClient().Database("llm_dev"),
+		}
+		// op.GenAllDefs()
+		// op.GenAllUsedDefs()
+		op.SetMinPreFix()
 	})
 }
