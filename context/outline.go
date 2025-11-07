@@ -3,20 +3,114 @@ package context
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"llm_dev/codebase/impl"
+	"llm_dev/database"
 	"llm_dev/utils"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 )
 
+type FileTreeNode struct {
+	isOpen   bool
+	isDir    bool
+	relpath  string
+	children map[string]*FileTreeNode
+}
+
+func (node *FileTreeNode) close() {
+	node.children = nil
+	node.isOpen = false
+}
+
+func (node *FileTreeNode) open(rootpath string) {
+	if !node.isDir {
+		return
+	}
+	if node.isOpen {
+		return
+	}
+	path := filepath.Join(rootpath, node.relpath)
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		log.Error().Err(err).Msg("open dir fail")
+		return
+	}
+	node.children = make(map[string]*FileTreeNode, len(entries))
+	for _, entry := range entries {
+		node.children[entry.Name()] = &FileTreeNode{
+			isOpen:  false,
+			isDir:   entry.IsDir(),
+			relpath: filepath.Join(node.relpath, entry.Name()),
+		}
+	}
+	node.isOpen = true
+}
+
 type OutlineContextMgr struct {
 	rootPath   string
 	buildCtxOp impl.BuildCodeBaseCtxOps
-	leafNode   map[string]bool
+
+	fileTree *FileTreeNode
 }
 
-func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string) {
+func NewOutlineCtxMgr(root string) OutlineContextMgr {
+	return OutlineContextMgr{
+		rootPath: root,
+		buildCtxOp: impl.BuildCodeBaseCtxOps{
+			RootPath: root,
+			Db:       database.GetDBClient().Database("llm_dev"),
+		},
+		fileTree: &FileTreeNode{
+			relpath: ".",
+			isDir:   true,
+			isOpen:  false,
+		},
+	}
+}
+func (mgr *OutlineContextMgr) walkNode(node *FileTreeNode) {
+	if node == nil {
+		return
+	}
+	fmt.Printf("node.relpath: %v\n", node.relpath)
+	for _, child := range node.children {
+		mgr.walkNode(child)
+	}
+}
+
+func (mgr *OutlineContextMgr) openDir(relpath string) (*FileTreeNode, error) {
+	node, err := mgr.findFileTreeNode(relpath)
+	if err != nil {
+		return nil, err
+	}
+	node.open(mgr.rootPath)
+	return node, nil
+}
+
+func (mgr *OutlineContextMgr) findFileTreeNode(relpath string) (*FileTreeNode, error) {
+	p := filepath.Clean(relpath)
+	if p == "." {
+		return mgr.fileTree, nil
+	}
+	parts := strings.Split(p, "/")
+	node := mgr.fileTree
+	for _, part := range parts {
+		if !node.isOpen {
+			node.open(mgr.rootPath)
+		}
+		child, exist := node.children[part]
+		if !exist {
+			return nil, fmt.Errorf("path not found %s", relpath)
+		}
+		node = child
+	}
+	return node, nil
+}
+
+func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string, d fs.DirEntry) {
 	usedDefs := mgr.buildCtxOp.FindUsedDefOutline(path)
 	defByFile := make(map[string]*utils.FileContent)
 	for _, def := range usedDefs {
@@ -32,7 +126,7 @@ func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string) {
 		buf.WriteString("NO Definition Used by Outer code\n\n")
 		return
 	}
-	if true {
+	if d.IsDir() {
 		buf.WriteString(fmt.Sprintf("# %s\n\n", path))
 		for path, fc := range defByFile {
 			file := filepath.Join(mgr.rootPath, path)
@@ -43,17 +137,16 @@ func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string) {
 			}
 			buf.WriteByte('\n')
 		}
-		// } else {
-		// 	if len(defByFile) > 1 {
-		// 		log.Fatal().Any("file", path).Msg("def by file len is more than 1 for file")
-		// 	}
-		// 	fc := defByFile[path]
-		// 	buf.WriteString(fmt.Sprintf("# %s\n\n", path))
-		// 	fc.WriteContent(buf, filepath.Join(mgr.rootPath, path))
-		// 	buf.WriteByte('\n')
+	} else {
+		if len(defByFile) > 1 {
+			log.Fatal().Any("file", path).Msg("def by file len is more than 1 for file")
+		}
+		fc := defByFile[path]
+		buf.WriteString(fmt.Sprintf("# %s\n\n", path))
+		fc.WriteContent(buf, filepath.Join(mgr.rootPath, path))
+		buf.WriteByte('\n')
 	}
 }
 
 func (mgr *OutlineContextMgr) WriteOutline(buf *bytes.Buffer) {
-
 }
