@@ -21,7 +21,7 @@ func TestOutlineContextMgr_writeLeafNode(t *testing.T) {
 			},
 		}
 		var buf bytes.Buffer
-		mgr.writeLeafNode(&buf, "context")
+		mgr.writeLeafNode(&buf, "codebase/common")
 		fmt.Printf("%s\n", buf.String())
 	})
 }

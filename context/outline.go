@@ -6,6 +6,8 @@ import (
 	"llm_dev/codebase/impl"
 	"llm_dev/utils"
 	"path/filepath"
+
+	"github.com/rs/zerolog/log"
 )
 
 type OutlineContextMgr struct {
@@ -35,7 +37,10 @@ func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string) {
 		for path, fc := range defByFile {
 			file := filepath.Join(mgr.rootPath, path)
 			buf.WriteString(fmt.Sprintf("- %s\n", path))
-			fc.WriteContent(buf, filepath.Join(mgr.rootPath, file))
+			err := fc.WriteContent(buf, file)
+			if err != nil {
+				log.Error().Err(err).Msg("write file content fail")
+			}
 			buf.WriteByte('\n')
 		}
 		// } else {
