@@ -1,6 +1,7 @@
 package context
 
 import (
+	"bytes"
 	"fmt"
 	"llm_dev/database"
 	"path/filepath"
@@ -46,10 +47,25 @@ func TestFileTree(t *testing.T) {
 	t.Run("test file tree node", func(t *testing.T) {
 		database.InitDB()
 		defer database.CloseDB()
+		handler := func(node *FileTreeNode) {
+			fmt.Printf("node.relpath: %v\n", node.relpath)
+		}
 		mgr := NewOutlineCtxMgr("/root/workspace/llm_dev")
-		mgr.walkNode(mgr.fileTree)
+		mgr.walkNode(mgr.fileTree, handler)
 		mgr.openDir("codebase/impl")
 		fmt.Printf("mgr.fileTree.children: %v\n", mgr.fileTree.children)
-		mgr.walkNode(mgr.fileTree)
+		mgr.walkNode(mgr.fileTree, handler)
+	})
+}
+
+func TestWrite(t *testing.T) {
+	t.Run("test write outline", func(t *testing.T) {
+		database.InitDB()
+		defer database.CloseDB()
+		mgr := NewOutlineCtxMgr("/root/workspace/llm_dev")
+		mgr.openDir(".")
+		var buf bytes.Buffer
+		mgr.WriteOutline(&buf)
+		fmt.Printf("%v\n", buf.String())
 	})
 }

@@ -3,7 +3,6 @@ package context
 import (
 	"bytes"
 	"fmt"
-	"io/fs"
 	"llm_dev/codebase/impl"
 	"llm_dev/database"
 	"llm_dev/utils"
@@ -12,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	ignore "github.com/sabhiram/go-gitignore"
 )
 
 type FileTreeNode struct {
@@ -71,13 +71,13 @@ func NewOutlineCtxMgr(root string) OutlineContextMgr {
 		},
 	}
 }
-func (mgr *OutlineContextMgr) walkNode(node *FileTreeNode) {
+func (mgr *OutlineContextMgr) walkNode(node *FileTreeNode, handler func(*FileTreeNode)) {
 	if node == nil {
 		return
 	}
-	fmt.Printf("node.relpath: %v\n", node.relpath)
+	handler(node)
 	for _, child := range node.children {
-		mgr.walkNode(child)
+		mgr.walkNode(child, handler)
 	}
 }
 
@@ -110,7 +110,7 @@ func (mgr *OutlineContextMgr) findFileTreeNode(relpath string) (*FileTreeNode, e
 	return node, nil
 }
 
-func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string, d fs.DirEntry) {
+func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string, isDir bool) {
 	usedDefs := mgr.buildCtxOp.FindUsedDefOutline(path)
 	defByFile := make(map[string]*utils.FileContent)
 	for _, def := range usedDefs {
@@ -126,7 +126,7 @@ func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string, d fs
 		buf.WriteString("NO Definition Used by Outer code\n\n")
 		return
 	}
-	if d.IsDir() {
+	if isDir {
 		buf.WriteString(fmt.Sprintf("# %s\n\n", path))
 		for path, fc := range defByFile {
 			file := filepath.Join(mgr.rootPath, path)
@@ -148,5 +148,29 @@ func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string, d fs
 	}
 }
 
+func (mgr *OutlineContextMgr) leafNode() []*FileTreeNode {
+	res := []*FileTreeNode{}
+	mgr.walkNode(mgr.fileTree, func(ftn *FileTreeNode) {
+		if ftn.isOpen {
+			return
+		}
+		res = append(res, ftn)
+	})
+	return res
+}
 func (mgr *OutlineContextMgr) WriteOutline(buf *bytes.Buffer) {
+	ig, err := ignore.CompileIgnoreFile(filepath.Join(mgr.rootPath, ".gitignore"))
+	if err != nil {
+		log.Error().Msgf("compile ignore failed")
+	}
+	leafNodes := mgr.leafNode()
+	for _, node := range leafNodes {
+		if ig != nil && ig.MatchesPath(node.relpath) {
+			continue
+		}
+		if !node.isDir && filepath.Ext(node.relpath) != ".go" {
+			continue
+		}
+		mgr.writeLeafNode(buf, node.relpath, node.isDir)
+	}
 }

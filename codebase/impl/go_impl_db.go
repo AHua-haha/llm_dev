@@ -433,6 +433,7 @@ func (op *BuildCodeBaseCtxOps) SetMinPreFix() {
 			log.Error().Err(err).Msg("find one def fail")
 			continue
 		}
+		def.MinPrefix = filepath.Clean(def.MinPrefix)
 		update := def.genUpdate("minprefix")
 		collection := op.Db.Collection("Defs")
 		_, err = collection.UpdateByID(context.TODO(), finddef.ID, update)
