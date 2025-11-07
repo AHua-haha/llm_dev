@@ -50,7 +50,7 @@ func TestFileTree(t *testing.T) {
 		handler := func(node *FileTreeNode) {
 			fmt.Printf("node.relpath: %v\n", node.relpath)
 		}
-		mgr := NewOutlineCtxMgr("/root/workspace/llm_dev")
+		mgr := NewOutlineCtxMgr("/root/workspace/llm_dev", nil)
 		mgr.walkNode(mgr.fileTree, handler)
 		mgr.openDir("codebase/impl")
 		fmt.Printf("mgr.fileTree.children: %v\n", mgr.fileTree.children)
@@ -62,7 +62,7 @@ func TestWrite(t *testing.T) {
 	t.Run("test write outline", func(t *testing.T) {
 		database.InitDB()
 		defer database.CloseDB()
-		mgr := NewOutlineCtxMgr("/root/workspace/llm_dev")
+		mgr := NewOutlineCtxMgr("/root/workspace/llm_dev", nil)
 		mgr.openDir(".")
 		var buf bytes.Buffer
 		mgr.WriteOutline(&buf)

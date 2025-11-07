@@ -215,7 +215,6 @@ func (use *UsedDef) AddDefKeyword(value string) {
 }
 
 func genTypeInfo(obj types.Object) (string, []string) {
-	def := Definition{}
 	var identifier string
 	var keyword []string
 	switch obj := obj.(type) {
@@ -238,9 +237,7 @@ func genTypeInfo(obj types.Object) (string, []string) {
 			typeName := rece.Type().String()
 			idx := strings.LastIndex(typeName, ".")
 			shortName := typeName[idx+1:]
-			def.AddKeyword("method")
-			def.AddKeyword(shortName)
-			keyword = []string{"method", shortName, obj.Name()}
+			keyword = []string{"method", obj.Name(), shortName}
 		} else {
 			keyword = []string{"function", obj.Name()}
 		}
@@ -706,6 +703,22 @@ func (op *BuildCodeBaseCtxOps) insertDefs(array []Definition) {
 	op.Db.Collection("Defs").InsertMany(context.TODO(), anySlice)
 }
 
+func (op *BuildCodeBaseCtxOps) FindUsedDefs(filter bson.M) []UsedDef {
+	collection := op.Db.Collection("Used")
+	cursor, err := collection.Find(context.TODO(), filter)
+	if err != nil {
+		log.Error().Err(err).Any("filter", filter).Msgf("run find failed")
+		return nil
+	}
+	defer cursor.Close(context.TODO())
+	result := []UsedDef{}
+	err = cursor.All(context.TODO(), &result)
+	if err != nil {
+		log.Error().Err(err).Msg("parse result to []UseDef failed")
+		return nil
+	}
+	return result
+}
 func (op *BuildCodeBaseCtxOps) FindDefs(filter bson.M) []Definition {
 	collection := op.Db.Collection("Defs")
 	cursor, err := collection.Find(context.TODO(), filter)

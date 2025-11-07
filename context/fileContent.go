@@ -82,7 +82,6 @@ use this tool to load context of definiton, you should specify two parameters:
 
 type FileContentCtxMgr struct {
 	rootPath           string
-	fileMap            map[string]*impl.FileDirInfo
 	autoLoadCtx        map[string]*CodeFile
 	BuildCodeBaseCtxop *impl.BuildCodeBaseCtxOps
 }
@@ -99,54 +98,6 @@ func NewFileCtxMgr(root string) *FileContentCtxMgr {
 	return mgr
 }
 
-func (mgr *FileContentCtxMgr) writeFdinfo(buf *bytes.Buffer, fd *impl.FileDirInfo) {
-	contentRange := fd.GetSummary()
-	if len(contentRange) == 0 {
-		buf.WriteString(fmt.Sprintf("# %s\n\n", fd.RelPath))
-		buf.WriteString("NO Definition Used by Outer code\n\n")
-		return
-	}
-	if fd.IsDir {
-		buf.WriteString(fmt.Sprintf("# %s\n\n", fd.RelPath))
-		for file, filecontent := range contentRange {
-			buf.WriteString(fmt.Sprintf("- %s\n", file))
-			filecontent.WriteContent(buf, filepath.Join(mgr.rootPath, file))
-			buf.WriteByte('\n')
-		}
-	} else {
-		if len(contentRange) != 1 {
-			return
-		}
-		ranges := contentRange[fd.RelPath]
-		buf.WriteString(fmt.Sprintf("# %s\n\n", fd.RelPath))
-		ranges.WriteContent(buf, filepath.Join(mgr.rootPath, fd.RelPath))
-		buf.WriteByte('\n')
-	}
-}
-
-func (mgr *FileContentCtxMgr) WriteUsedDefs(buf *bytes.Buffer) {
-	description := `
-This section shows the definition under certain file or firectory that is being used by some code that is not under the same file or directory.
-So fot certain file or directory, the definiton that is only used within the same file or directory is omitted。
-This helps you better understand the functionality of a file or directory from the perspective of the whole codebase.
-
-`
-	buf.WriteString("## CODEBASE USED DEFINITION ##\n\n")
-	buf.WriteString(description)
-	buf.WriteString("```\n")
-	mgr.fileMap = mgr.BuildCodeBaseCtxop.GenFileMap()
-	fileChan := mgr.BuildCodeBaseCtxop.WalkProjectFileTree()
-	for file := range fileChan {
-		relPath, _ := filepath.Rel(mgr.rootPath, file.Path)
-		fdInfo := mgr.fileMap[relPath]
-		if fdInfo == nil {
-			continue
-		}
-		mgr.writeFdinfo(buf, fdInfo)
-	}
-	buf.WriteString("```\n")
-	buf.WriteString("## END OF CODEBASE USED DEFINITION ##\n\n")
-}
 func (mgr *FileContentCtxMgr) WriteFileTree(buf *bytes.Buffer) {
 	buf.WriteString("## CODEBASE FILE TREE ##\n\n")
 	buf.WriteString("This section shows the file tree structure of the codebase.\n")

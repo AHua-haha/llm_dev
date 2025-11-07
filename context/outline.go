@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"llm_dev/codebase/impl"
-	"llm_dev/database"
 	"llm_dev/model"
 	"llm_dev/utils"
 	"os"
@@ -86,18 +85,15 @@ func (node *FileTreeNode) open(rootpath string) {
 
 type OutlineContextMgr struct {
 	rootPath   string
-	buildCtxOp impl.BuildCodeBaseCtxOps
+	buildCtxOp *impl.BuildCodeBaseCtxOps
 
 	fileTree *FileTreeNode
 }
 
-func NewOutlineCtxMgr(root string) OutlineContextMgr {
+func NewOutlineCtxMgr(root string, buildOp *impl.BuildCodeBaseCtxOps) OutlineContextMgr {
 	return OutlineContextMgr{
-		rootPath: root,
-		buildCtxOp: impl.BuildCodeBaseCtxOps{
-			RootPath: root,
-			Db:       database.GetDBClient().Database("llm_dev"),
-		},
+		rootPath:   root,
+		buildCtxOp: buildOp,
 		fileTree: &FileTreeNode{
 			relpath: ".",
 			isDir:   true,

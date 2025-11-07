@@ -165,11 +165,11 @@ func TestFileOutline(t *testing.T) {
 			Db:       database.GetDBClient().Database("llm_dev"),
 		}
 		// op.GenAllDefs()
-		// op.GenAllUsedDefs()
+		op.GenAllUsedDefs()
 		// op.SetMinPreFix()
-		defs := op.FindUsedDefOutline("")
-		for _, def := range defs {
-			fmt.Printf("%s %s %s\n", def.RelFile, def.Identifier, def.MinPrefix)
-		}
+		// defs := op.FindUsedDefOutline("")
+		// for _, def := range defs {
+		// 	fmt.Printf("%s %s %s\n", def.RelFile, def.Identifier, def.MinPrefix)
+		// }
 	})
 }

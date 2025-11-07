@@ -377,6 +377,9 @@ func WalkGoProjectTypeAst(rootPath string, handler HandlerFunc) *ContextHandler 
 		}
 		ctx.Set("mainModule", mainModule)
 		for _, pkg := range pkgs {
+			if strings.Contains(pkg.ID, ".test") {
+				continue // skip test and test variants
+			}
 			ctx.Set("pkg", pkg)
 			for i, file := range pkg.Syntax {
 				fileName := pkg.GoFiles[i]
