@@ -2,9 +2,11 @@ package context
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"llm_dev/codebase/impl"
 	"llm_dev/database"
+	"llm_dev/model"
 	"llm_dev/utils"
 	"os"
 	"path/filepath"
@@ -12,7 +14,39 @@ import (
 
 	"github.com/rs/zerolog/log"
 	ignore "github.com/sabhiram/go-gitignore"
+	"github.com/sashabaranov/go-openai"
+	"github.com/sashabaranov/go-openai/jsonschema"
 )
+
+var dirOverview = openai.FunctionDefinition{
+	Name: "get_directory_overview",
+	Description: `
+This tool is used for load the definition overview for a file or directory.
+The definition overview shows the definition declared in the directory and used by code out of the directory.
+The definition overview shows how certain file or directory is used by other code.
+<example>
+directory A has the following structure.
+# A
+- File test.go
+- dir test
+- dir utils
+- dir codebase
+
+function call: get_directory_overview path = "A/test.go", load the definition overview for file A/test.go.
+function call: get_directory_overview path = "A/codebase", load the definition overview for directory A/codebase
+</example>
+	`,
+	Parameters: jsonschema.Definition{
+		Type: jsonschema.Object,
+		Properties: map[string]jsonschema.Definition{
+			"path": {
+				Type:        jsonschema.String,
+				Description: "the file path to load, e.g. src/codebase",
+			},
+		},
+		Required: []string{"path"},
+	},
+}
 
 type FileTreeNode struct {
 	isOpen   bool
@@ -163,6 +197,24 @@ func (mgr *OutlineContextMgr) WriteOutline(buf *bytes.Buffer) {
 	if err != nil {
 		log.Error().Msgf("compile ignore failed")
 	}
+	description := `
+This section shows the overview for a directory of file. For example, A is a file or directory, it shows
+the definition defined in A and used by other code out of A. The format is as following:
+<example>
+# A
+- A/foo
+definitions in A/foo
+- A/bar
+definitions in A/bar
+</example>
+To help user with task, you should use this section to:
+- understand the overall purpose of different module, figure out what each module is used for and what functionality each module provides.
+- examine the user's prompt and determine which part in the codebase is relevant with the task and use tools to load the relevant context.
+
+`
+	buf.WriteString("## CODEBASE OVERVIEW ##\n\n")
+	buf.WriteString(description)
+	buf.WriteString("```\n")
 	leafNodes := mgr.leafNode()
 	for _, node := range leafNodes {
 		if ig != nil && ig.MatchesPath(node.relpath) {
@@ -173,4 +225,33 @@ func (mgr *OutlineContextMgr) WriteOutline(buf *bytes.Buffer) {
 		}
 		mgr.writeLeafNode(buf, node.relpath, node.isDir)
 	}
+	buf.WriteString("```\n")
+	buf.WriteString("## END OF CODEBASE OVERVIEW ##\n\n")
+}
+
+func (mgr *OutlineContextMgr) GetToolDef() []model.ToolDef {
+	dirOverviewHandler := func(argsStr string) (string, error) {
+		args := struct {
+			Path string
+		}{}
+		err := json.Unmarshal([]byte(argsStr), &args)
+		if err != nil {
+			return "", err
+		}
+		var res string
+		p := filepath.Dir(args.Path)
+		_, err = mgr.openDir(p)
+		if err != nil {
+			res = fmt.Sprintf("load definition overview for %s failed", args.Path)
+		} else {
+			res = fmt.Sprintf("load definition overview for %s success", args.Path)
+		}
+		return res, nil
+	}
+	var res []model.ToolDef
+	res = append(res, model.ToolDef{
+		FunctionDefinition: loadFileTool,
+		Handler:            dirOverviewHandler,
+	})
+	return res
 }
