@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"llm_dev/codebase/impl"
-	"llm_dev/database"
 	"llm_dev/model"
 	"llm_dev/utils"
-	"os"
 	"path/filepath"
 	"sort"
 
@@ -82,50 +80,21 @@ use this tool to load context of definiton, you should specify two parameters:
 
 type FileContentCtxMgr struct {
 	rootPath           string
-	autoLoadCtx        map[string]*CodeFile
 	BuildCodeBaseCtxop *impl.BuildCodeBaseCtxOps
+
+	autoLoadCtx map[string]*CodeFile
 }
 
-func NewFileCtxMgr(root string) *FileContentCtxMgr {
-	mgr := &FileContentCtxMgr{
-		rootPath: root,
-		BuildCodeBaseCtxop: &impl.BuildCodeBaseCtxOps{
-			RootPath: root,
-			Db:       database.GetDBClient().Database("llm_dev"),
-		},
-		autoLoadCtx: make(map[string]*CodeFile),
+func NewFileCtxMgr(root string, buildOp *impl.BuildCodeBaseCtxOps) FileContentCtxMgr {
+	mgr := FileContentCtxMgr{
+		rootPath:           root,
+		BuildCodeBaseCtxop: buildOp,
+		autoLoadCtx:        make(map[string]*CodeFile),
 	}
 	return mgr
 }
 
-func (mgr *FileContentCtxMgr) WriteFileTree(buf *bytes.Buffer) {
-	buf.WriteString("## CODEBASE FILE TREE ##\n\n")
-	buf.WriteString("This section shows the file tree structure of the codebase.\n")
-	buf.WriteString("```\n")
-	fileChan := mgr.BuildCodeBaseCtxop.WalkProjectFileTree()
-	for file := range fileChan {
-		if !file.D.IsDir() {
-			continue
-		}
-		relPath, _ := filepath.Rel(mgr.rootPath, file.Path)
-		entries, err := os.ReadDir(file.Path)
-		if err != nil {
-			continue
-		}
-		buf.WriteString(fmt.Sprintf("# %s\n", relPath))
-		for _, entry := range entries {
-			if entry.IsDir() {
-				buf.WriteString(fmt.Sprintf("- dir %s\n", entry.Name()))
-			} else {
-				buf.WriteString(fmt.Sprintf("- file %s\n", entry.Name()))
-			}
-		}
-		buf.WriteByte('\n')
-	}
-	buf.WriteString("```\n")
-	buf.WriteString("## END OF CODEBASE FILE TREE ##\n\n")
-}
-func (mgr *FileContentCtxMgr) WriteAutoLoadCtx(buf *bytes.Buffer) {
+func (mgr *FileContentCtxMgr) writeAutoLoadCtx(buf *bytes.Buffer) {
 	description := `
 This section shows all the dynamic loaded context in this codebase.
 You should:
@@ -145,6 +114,10 @@ You should:
 	}
 	buf.WriteString("```\n")
 	buf.WriteString("## END OF CODEBASE LOADED FILE CONTEXT ##\n\n")
+}
+
+func (mgr *FileContentCtxMgr) WriteContext(buf *bytes.Buffer) {
+	mgr.writeAutoLoadCtx(buf)
 }
 
 func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
@@ -187,15 +160,10 @@ func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
 		}
 		return res, nil
 	}
-	var res []model.ToolDef
-	res = append(res, model.ToolDef{
-		FunctionDefinition: loadFileTool,
-		Handler:            loadFileHandler,
-	})
-	res = append(res, model.ToolDef{
-		FunctionDefinition: loadFileDefsTool,
-		Handler:            loadDefsHandler,
-	})
+	res := []model.ToolDef{
+		{FunctionDefinition: loadFileTool, Handler: loadFileHandler},
+		{FunctionDefinition: loadFileDefsTool, Handler: loadDefsHandler},
+	}
 	return res
 }
 

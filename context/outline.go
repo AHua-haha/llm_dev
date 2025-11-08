@@ -21,7 +21,7 @@ var dirOverview = openai.FunctionDefinition{
 	Name: "get_directory_overview",
 	Description: `
 This tool is used for load the definition overview for a file or directory.
-The definition overview shows the definition declared in the directory and used by code out of the directory.
+The definition overview shows the definition which are declared in the directory and used by code out of the directory.
 The definition overview shows how certain file or directory is used by other code.
 <example>
 directory A has the following structure.
@@ -111,7 +111,7 @@ func (mgr *OutlineContextMgr) walkNode(node *FileTreeNode, handler func(*FileTre
 	}
 }
 
-func (mgr *OutlineContextMgr) openDir(relpath string) (*FileTreeNode, error) {
+func (mgr *OutlineContextMgr) OpenDir(relpath string) (*FileTreeNode, error) {
 	node, err := mgr.findFileTreeNode(relpath)
 	if err != nil {
 		return nil, err
@@ -180,19 +180,53 @@ func (mgr *OutlineContextMgr) writeLeafNode(buf *bytes.Buffer, path string, isDi
 
 func (mgr *OutlineContextMgr) leafNode() []*FileTreeNode {
 	res := []*FileTreeNode{}
+	ig, err := ignore.CompileIgnoreFile(filepath.Join(mgr.rootPath, ".gitignore"))
+	if err != nil {
+		log.Error().Msgf("compile ignore failed")
+	}
 	mgr.walkNode(mgr.fileTree, func(ftn *FileTreeNode) {
 		if ftn.isOpen {
+			return
+		}
+		if ig != nil && ig.MatchesPath(ftn.relpath) {
+			return
+		}
+		if !ftn.isDir && filepath.Ext(ftn.relpath) != ".go" {
 			return
 		}
 		res = append(res, ftn)
 	})
 	return res
 }
-func (mgr *OutlineContextMgr) WriteOutline(buf *bytes.Buffer) {
-	ig, err := ignore.CompileIgnoreFile(filepath.Join(mgr.rootPath, ".gitignore"))
-	if err != nil {
-		log.Error().Msgf("compile ignore failed")
+
+func (mgr *OutlineContextMgr) writeFileTree(buf *bytes.Buffer) {
+	buf.WriteString("## CODEBASE FILE TREE ##\n\n")
+	buf.WriteString("This section shows the file tree structure of the codebase.\n")
+	buf.WriteString("```\n")
+	fileChan := mgr.buildCtxOp.WalkProjectFileTree()
+	for file := range fileChan {
+		if !file.D.IsDir() {
+			continue
+		}
+		relPath, _ := filepath.Rel(mgr.rootPath, file.Path)
+		entries, err := os.ReadDir(file.Path)
+		if err != nil {
+			continue
+		}
+		buf.WriteString(fmt.Sprintf("# %s\n", relPath))
+		for _, entry := range entries {
+			if entry.IsDir() {
+				buf.WriteString(fmt.Sprintf("- dir %s\n", entry.Name()))
+			} else {
+				buf.WriteString(fmt.Sprintf("- file %s\n", entry.Name()))
+			}
+		}
+		buf.WriteByte('\n')
 	}
+	buf.WriteString("```\n")
+	buf.WriteString("## END OF CODEBASE FILE TREE ##\n\n")
+}
+func (mgr *OutlineContextMgr) writeOutline(buf *bytes.Buffer) {
 	description := `
 This section shows the overview for a directory of file. For example, A is a file or directory, it shows
 the definition defined in A and used by other code out of A. The format is as following:
@@ -213,16 +247,15 @@ To help user with task, you should use this section to:
 	buf.WriteString("```\n")
 	leafNodes := mgr.leafNode()
 	for _, node := range leafNodes {
-		if ig != nil && ig.MatchesPath(node.relpath) {
-			continue
-		}
-		if !node.isDir && filepath.Ext(node.relpath) != ".go" {
-			continue
-		}
 		mgr.writeLeafNode(buf, node.relpath, node.isDir)
 	}
 	buf.WriteString("```\n")
 	buf.WriteString("## END OF CODEBASE OVERVIEW ##\n\n")
+}
+
+func (mgr *OutlineContextMgr) WriteContext(buf *bytes.Buffer) {
+	mgr.writeFileTree(buf)
+	mgr.writeOutline(buf)
 }
 
 func (mgr *OutlineContextMgr) GetToolDef() []model.ToolDef {
@@ -236,7 +269,7 @@ func (mgr *OutlineContextMgr) GetToolDef() []model.ToolDef {
 		}
 		var res string
 		p := filepath.Dir(args.Path)
-		_, err = mgr.openDir(p)
+		_, err = mgr.OpenDir(p)
 		if err != nil {
 			res = fmt.Sprintf("load definition overview for %s failed", args.Path)
 		} else {
@@ -244,10 +277,8 @@ func (mgr *OutlineContextMgr) GetToolDef() []model.ToolDef {
 		}
 		return res, nil
 	}
-	var res []model.ToolDef
-	res = append(res, model.ToolDef{
-		FunctionDefinition: loadFileTool,
-		Handler:            dirOverviewHandler,
-	})
+	res := []model.ToolDef{
+		{FunctionDefinition: dirOverview, Handler: dirOverviewHandler},
+	}
 	return res
 }

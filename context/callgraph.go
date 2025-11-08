@@ -62,8 +62,8 @@ var findDefUsed = openai.FunctionDefinition{
 	Name: "find_used_definition",
 	Description: `
 This tool is used for finding all the definition used within some function or type struct.
-Use this tool when you do not konw what some symbols actually refer to, where is the function or type is declared.
-IMPORTANT: DO NOT guess the definition based on obly the symbol name, it may leader to wrong definition. You should always use this tool to find the accurate definition used.
+Use this tool when you do not konw what some symbols actually refer to, where the function or type is declared.
+IMPORTANT: DO NOT guess the definition based on only the symbol name, it may leads to wrong definition. You should always use this tool to find the accurate definition used.
 
 <example>
 Given some code in utils.go
@@ -105,6 +105,13 @@ function call: find_used_definition file = codebase/common/utils.go, name = Cont
 type CallGraphContextMgr struct {
 	rootPath    string
 	buildCtxOps *impl.BuildCodeBaseCtxOps
+}
+
+func NewCallGraphMgr(root string, buildOp *impl.BuildCodeBaseCtxOps) CallGraphContextMgr {
+	return CallGraphContextMgr{
+		rootPath:    root,
+		buildCtxOps: buildOp,
+	}
 }
 
 func (mgr *CallGraphContextMgr) genReferenceOutput(usedDefs []impl.UsedDef) string {
