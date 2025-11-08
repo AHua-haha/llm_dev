@@ -2,14 +2,105 @@ package context
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"llm_dev/codebase/impl"
+	"llm_dev/model"
 	"llm_dev/utils"
 	"path/filepath"
 
 	"github.com/rs/zerolog/log"
+	"github.com/sashabaranov/go-openai"
+	"github.com/sashabaranov/go-openai/jsonschema"
 	"go.mongodb.org/mongo-driver/bson"
 )
+
+var findReference = openai.FunctionDefinition{
+	Name: "find_reference",
+	Description: `
+This tool is used for finding where some definition is used or referenced. You can use this tool to find where some function or type is used.
+This tool help you understand the codebase call graph.
+
+<example>
+Given some code in utils.go
+
+- codebase/common/utils.go
+
+277| type ContextHandler struct {
+278|    OutputChan chan map[string]any
+279|    ctxValue   map[string]any
+280|    handler    HandlerFunc
+281| }
+...
+309| func GetAs[T any](ctx *ContextHandler, key string) T {
+
+function call: find_reference file = codebase/common/utils.go, name = GetAs, line = 309. find definition which calls function GetAs.
+function call: find_reference file = codebase/common/utils.go, name = ContextHandler, line = 277. find all the definition which uses the struct ContextHandler.
+</example>
+	`,
+	Parameters: jsonschema.Definition{
+		Type: jsonschema.Object,
+		Properties: map[string]jsonschema.Definition{
+			"file": {
+				Type:        jsonschema.String,
+				Description: "the file path of the code e.g. src/codebase",
+			},
+			"name": {
+				Type:        jsonschema.String,
+				Description: "the name of the function or type",
+			},
+			"line": {
+				Type:        jsonschema.Number,
+				Description: "the line num where the function name or type name is declared",
+			},
+		},
+		Required: []string{"file", "name", "line"},
+	},
+}
+
+var findDefUsed = openai.FunctionDefinition{
+	Name: "find_used_definition",
+	Description: `
+This tool is used for finding all the definition used within some function or type struct.
+Use this tool when you do not konw what some symbols actually refer to, where is the function or type is declared.
+IMPORTANT: DO NOT guess the definition based on obly the symbol name, it may leader to wrong definition. You should always use this tool to find the accurate definition used.
+
+<example>
+Given some code in utils.go
+
+- codebase/common/utils.go
+
+277| type ContextHandler struct {
+278|    OutputChan chan map[string]any
+279|    ctxValue   map[string]any
+280|    handler    HandlerFunc
+281| }
+...
+309| func GetAs[T any](ctx *ContextHandler, key string) T {
+
+function call: find_used_definition file = codebase/common/utils.go, name = GetAs, line = 309. find all the definition used within the function GetAs.
+function call: find_used_definition file = codebase/common/utils.go, name = ContextHandler, line = 277. find all the definition used within the struct ContextHandler.
+</example>
+	`,
+	Parameters: jsonschema.Definition{
+		Type: jsonschema.Object,
+		Properties: map[string]jsonschema.Definition{
+			"file": {
+				Type:        jsonschema.String,
+				Description: "the file path of the code e.g. src/codebase",
+			},
+			"name": {
+				Type:        jsonschema.String,
+				Description: "the name of the function or type",
+			},
+			"line": {
+				Type:        jsonschema.Number,
+				Description: "the line num where the function name or type name is declared",
+			},
+		},
+		Required: []string{"file", "name", "line"},
+	},
+}
 
 type CallGraphContextMgr struct {
 	rootPath    string
@@ -148,4 +239,48 @@ func (mgr *CallGraphContextMgr) findUsedDefs(file string, identifier string, lin
 	}
 	useDefRes := mgr.buildCtxOps.FindUsedDefs(useDefFilter)
 	return useDefRes, nil
+}
+func (mgr *CallGraphContextMgr) WriteContext(buf *bytes.Buffer) {
+}
+
+func (mgr *CallGraphContextMgr) GetToolDef() []model.ToolDef {
+	findDefHandler := func(argsStr string) (string, error) {
+		args := struct {
+			File string
+			Name string
+			Line uint
+		}{}
+		err := json.Unmarshal([]byte(argsStr), &args)
+		if err != nil {
+			return "", err
+		}
+		usedef, err := mgr.findUsedDefs(args.File, args.Name, args.Line)
+		if err != nil {
+			return "", err
+		}
+		res := mgr.genUseOutput(usedef)
+		return res, nil
+	}
+	findRefHandler := func(argsStr string) (string, error) {
+		args := struct {
+			File string
+			Name string
+			Line uint
+		}{}
+		err := json.Unmarshal([]byte(argsStr), &args)
+		if err != nil {
+			return "", err
+		}
+		usedef, err := mgr.findReference(args.File, args.Name, args.Line)
+		if err != nil {
+			return "", err
+		}
+		res := mgr.genReferenceOutput(usedef)
+		return res, nil
+	}
+	res := []model.ToolDef{
+		{FunctionDefinition: findDefUsed, Handler: findDefHandler},
+		{FunctionDefinition: findReference, Handler: findRefHandler},
+	}
+	return res
 }
