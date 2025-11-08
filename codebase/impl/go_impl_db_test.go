@@ -150,8 +150,8 @@ func TestSetMinPrefix(t *testing.T) {
 			RootPath: "/root/workspace/llm_dev",
 			Db:       database.GetDBClient().Database("llm_dev"),
 		}
-		// op.GenAllDefs()
-		// op.GenAllUsedDefs()
+		op.GenAllDefs()
+		op.GenAllUsedDefs()
 		op.SetMinPreFix()
 	})
 }

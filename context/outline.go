@@ -18,7 +18,8 @@ import (
 )
 
 var dirOverview = openai.FunctionDefinition{
-	Name: "get_directory_overview",
+	Name:   "get_directory_overview",
+	Strict: true,
 	Description: `
 This tool is used for load the definition overview for a file or directory.
 The definition overview shows the definition which are declared in the directory and used by code out of the directory.
@@ -36,7 +37,8 @@ function call: get_directory_overview path = "A/codebase", load the definition o
 </example>
 	`,
 	Parameters: jsonschema.Definition{
-		Type: jsonschema.Object,
+		Type:                 jsonschema.Object,
+		AdditionalProperties: false,
 		Properties: map[string]jsonschema.Definition{
 			"path": {
 				Type:        jsonschema.String,

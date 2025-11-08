@@ -3,6 +3,7 @@ package context
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"llm_dev/codebase/impl"
 	"llm_dev/model"
@@ -16,7 +17,8 @@ import (
 )
 
 var findReference = openai.FunctionDefinition{
-	Name: "find_reference",
+	Name:   "find_reference",
+	Strict: true,
 	Description: `
 This tool is used for finding where some definition is used or referenced. You can use this tool to find where some function or type is used.
 This tool help you understand the codebase call graph.
@@ -39,7 +41,8 @@ function call: find_reference file = codebase/common/utils.go, name = ContextHan
 </example>
 	`,
 	Parameters: jsonschema.Definition{
-		Type: jsonschema.Object,
+		Type:                 jsonschema.Object,
+		AdditionalProperties: false,
 		Properties: map[string]jsonschema.Definition{
 			"file": {
 				Type:        jsonschema.String,
@@ -59,7 +62,8 @@ function call: find_reference file = codebase/common/utils.go, name = ContextHan
 }
 
 var findDefUsed = openai.FunctionDefinition{
-	Name: "find_used_definition",
+	Name:   "find_used_definition",
+	Strict: true,
 	Description: `
 This tool is used for finding all the definition used within some function or type struct.
 Use this tool when you do not konw what some symbols actually refer to, where the function or type is declared.
@@ -83,7 +87,8 @@ function call: find_used_definition file = codebase/common/utils.go, name = Cont
 </example>
 	`,
 	Parameters: jsonschema.Definition{
-		Type: jsonschema.Object,
+		Type:                 jsonschema.Object,
+		AdditionalProperties: false,
 		Properties: map[string]jsonschema.Definition{
 			"file": {
 				Type:        jsonschema.String,
@@ -204,18 +209,37 @@ func (mgr *CallGraphContextMgr) genUseOutput(usedDefs []impl.UsedDef) string {
 	buf.WriteByte('\n')
 	return buf.String()
 }
-
-func (mgr *CallGraphContextMgr) findReference(file string, identifier string, line uint) ([]impl.UsedDef, error) {
+func (mgr *CallGraphContextMgr) findExactDef(file string, identifier string, line uint) (*impl.Definition, error) {
 	filter := bson.M{
-		"relfile":           file,
-		"identifier":        identifier,
-		"content.startline": line,
+		"relfile":    file,
+		"identifier": identifier,
 	}
 	res := mgr.buildCtxOps.FindDefs(filter)
-	if len(res) != 1 {
-		return nil, fmt.Errorf("could not identify the exact definition using %s %s %d", file, identifier, line)
+	size := len(res)
+	if size == 1 {
+		return &res[0], nil
 	}
-	def := res[0]
+	if size == 0 {
+		return nil, fmt.Errorf("do not find definition named %s in file %s", identifier, file)
+	}
+	fc := utils.FileContent{}
+	for i, def := range res {
+		fc.AddChunk(def.Summary)
+		if def.Content.StartLine == line {
+			return &res[i], nil
+		}
+	}
+	var buf bytes.Buffer
+	buf.WriteString("Found more than one definitions:\n")
+	fc.WriteContent(&buf, filepath.Join(mgr.rootPath, file))
+	return nil, errors.New(buf.String())
+}
+
+func (mgr *CallGraphContextMgr) findReference(file string, identifier string, line uint) ([]impl.UsedDef, error) {
+	def, err := mgr.findExactDef(file, identifier, line)
+	if err != nil {
+		return nil, err
+	}
 	useDefFilter := bson.M{
 		"deffile":       def.RelFile,
 		"defidentifier": def.Identifier,
@@ -227,16 +251,10 @@ func (mgr *CallGraphContextMgr) findReference(file string, identifier string, li
 	return useDefRes, nil
 }
 func (mgr *CallGraphContextMgr) findUsedDefs(file string, identifier string, line uint) ([]impl.UsedDef, error) {
-	filter := bson.M{
-		"relfile":           file,
-		"identifier":        identifier,
-		"content.startline": line,
+	def, err := mgr.findExactDef(file, identifier, line)
+	if err != nil {
+		return nil, err
 	}
-	res := mgr.buildCtxOps.FindDefs(filter)
-	if len(res) != 1 {
-		return nil, fmt.Errorf("could not identify the exact definition using %s %s %d", file, identifier, line)
-	}
-	def := res[0]
 	useDefFilter := bson.M{
 		"file":       def.RelFile,
 		"identifier": def.Identifier,
@@ -263,7 +281,7 @@ func (mgr *CallGraphContextMgr) GetToolDef() []model.ToolDef {
 		}
 		usedef, err := mgr.findUsedDefs(args.File, args.Name, args.Line)
 		if err != nil {
-			return "", err
+			return err.Error(), nil
 		}
 		res := mgr.genUseOutput(usedef)
 		return res, nil
@@ -280,7 +298,7 @@ func (mgr *CallGraphContextMgr) GetToolDef() []model.ToolDef {
 		}
 		usedef, err := mgr.findReference(args.File, args.Name, args.Line)
 		if err != nil {
-			return "", err
+			return err.Error(), nil
 		}
 		res := mgr.genReferenceOutput(usedef)
 		return res, nil

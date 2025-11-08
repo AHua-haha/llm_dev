@@ -2,6 +2,8 @@ package agent
 
 import (
 	"fmt"
+	"llm_dev/codebase/impl"
+	"llm_dev/context"
 	"llm_dev/database"
 	"testing"
 )
@@ -36,18 +38,17 @@ func TestTool(t *testing.T) {
 	t.Run("test tool description", func(t *testing.T) {
 		database.InitDB()
 		defer database.CloseDB()
-		model := NewModel("http://172.17.0.1:4000", "sk-1234")
-		agent := NewBaseAgent("/root/workspace/llm_dev", *model)
-		tools := agent.fileCtxMgr.GetToolDef()
-		for _, tool := range tools {
-			fmt.Printf("%s\n", tool.Name)
-			fmt.Printf("%s\n", tool.Description)
+		buildOp := impl.BuildCodeBaseCtxOps{
+			RootPath: "/root/workspace/llm_dev",
+			Db:       database.GetDBClient().Database("llm_dev"),
 		}
-		ctx := NewAgentContext(nil, "", agent.fileCtxMgr)
-		req := ctx.genRequest(systemPompt)
-		for _, msg := range req.Messages {
-			fmt.Printf("%s\n", msg.Role)
-			fmt.Printf("%s\n", msg.Content)
-		}
+		root := "/root/workspace/llm_dev"
+		callGraphMgr := context.NewCallGraphMgr(root, &buildOp)
+		filectxMgr := context.NewFileCtxMgr(root, &buildOp)
+		outlineCtxMgr := context.NewOutlineCtxMgr(root, &buildOp)
+		outlineCtxMgr.OpenDir(".")
+		ctx := NewAgentContext(nil, "hello world", &callGraphMgr, &outlineCtxMgr, &filectxMgr)
+		test := ctx.genRequest("")
+		DebugMsg(&test)
 	})
 }

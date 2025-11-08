@@ -3,11 +3,15 @@ package agent
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"llm_dev/codebase/impl"
 	ctx "llm_dev/context"
+	"llm_dev/database"
 	"llm_dev/model"
+	"os"
 
 	"github.com/rs/zerolog/log"
 	"github.com/sashabaranov/go-openai"
@@ -30,23 +34,28 @@ func NewModel(baseurl string, apikey string) *Model {
 }
 
 type AgentContext struct {
-	userPrompt     string
-	history        []openai.ChatCompletionMessage
+	userPrompt string
+	history    []openai.ChatCompletionMessage
+	finished   bool
+
 	preTaskHistory []openai.ChatCompletionMessage
-	finished       bool
-	fileCtxMgr     *ctx.FileContentCtxMgr
+
+	ctxMgr []ctx.ContextMgr
+
 	toolHandlerMap map[string]model.ToolDef
 }
 
-func NewAgentContext(preHistory []openai.ChatCompletionMessage, userprompt string, fileCtxMgr *ctx.FileContentCtxMgr) *AgentContext {
+func NewAgentContext(preHistory []openai.ChatCompletionMessage, userprompt string, ctxMgr ...ctx.ContextMgr) *AgentContext {
 	ctx := AgentContext{
 		userPrompt:     userprompt,
 		finished:       false,
-		fileCtxMgr:     fileCtxMgr,
 		toolHandlerMap: make(map[string]model.ToolDef),
 		preTaskHistory: preHistory,
+		ctxMgr:         ctxMgr,
 	}
-	ctx.registerTool(fileCtxMgr.GetToolDef())
+	for _, mgr := range ctxMgr {
+		ctx.registerTool(mgr.GetToolDef())
+	}
 	return &ctx
 }
 func (ctx *AgentContext) getResult() []openai.ChatCompletionMessage {
@@ -98,9 +107,9 @@ func (ctx *AgentContext) done() bool {
 	return ctx.finished
 }
 func (ctx *AgentContext) writeContext(buf *bytes.Buffer) {
-	ctx.fileCtxMgr.WriteFileTree(buf)
-	ctx.fileCtxMgr.WriteUsedDefs(buf)
-	ctx.fileCtxMgr.WriteAutoLoadCtx(buf)
+	for _, mgr := range ctx.ctxMgr {
+		mgr.WriteContext(buf)
+	}
 }
 
 func (ctx *AgentContext) toolCall(toolCall openai.ToolCall) (openai.ChatCompletionMessage, error) {
@@ -133,16 +142,21 @@ func (ctx *AgentContext) registerTool(tools []model.ToolDef) {
 }
 
 type BaseAgent struct {
-	model Model
+	model   Model
+	root    string
+	buildOp *impl.BuildCodeBaseCtxOps
 
-	history    []openai.ChatCompletionMessage
-	fileCtxMgr *ctx.FileContentCtxMgr
+	history []openai.ChatCompletionMessage
 }
 
 func NewBaseAgent(codebase string, model Model) BaseAgent {
 	agent := BaseAgent{
-		model:      model,
-		fileCtxMgr: ctx.NewFileCtxMgr(codebase),
+		model: model,
+		root:  codebase,
+		buildOp: &impl.BuildCodeBaseCtxOps{
+			RootPath: codebase,
+			Db:       database.GetDBClient().Database("llm_dev"),
+		},
 	}
 	return agent
 }
@@ -182,6 +196,7 @@ func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream, ctx 
 		toolCalls: make(map[int]openai.ToolCall),
 	}
 	var finishReason openai.FinishReason
+	fmt.Printf("RESP:\n")
 	for {
 		res, e := stream.Recv()
 		if e != nil {
@@ -195,34 +210,46 @@ func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream, ctx 
 		}
 		aggregate.addChunk(d)
 	}
-	fmt.Print("\n\n")
+	fmt.Print("END OF RESP\n\n")
 	if !errors.Is(err, io.EOF) {
 		ctx.finished = true
 		return
 	}
+	file, _ := os.OpenFile("context.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	resp := aggregate.res()
+	file.WriteString(fmt.Sprintf("RESP:\n%s\n\n", resp.Content))
 	ctx.addMessage(resp)
 	for _, toolCall := range resp.ToolCalls {
 		msg, err := ctx.toolCall(toolCall)
-		ctx.addMessage(msg)
+		file.WriteString(fmt.Sprintf("TOOL CALL:\n%s\n", msg.Content))
 		if err != nil {
 			log.Error().Err(err).Any("toolcall", toolCall).Msg("tool call failed")
 		} else {
 			log.Info().Any("tool call", toolCall).Any("result", msg.Content).Msg("run tool call success")
+			ctx.addMessage(msg)
 		}
 	}
+	var buf bytes.Buffer
+	ctx.writeContext(&buf)
+	file.WriteString("CONTEXT:\n")
+	file.Write(buf.Bytes())
+	file.Close()
+
 	if finishReason == openai.FinishReasonStop {
 		ctx.finished = true
 	}
 }
 
 func (agent *BaseAgent) NewUserTask(userprompt string) {
-	ctx := NewAgentContext(agent.history, userprompt, agent.fileCtxMgr)
+	callGraphMgr := ctx.NewCallGraphMgr(agent.root, agent.buildOp)
+	filectxMgr := ctx.NewFileCtxMgr(agent.root, agent.buildOp)
+	outlineCtxMgr := ctx.NewOutlineCtxMgr(agent.root, agent.buildOp)
+	ctx := NewAgentContext(agent.history, userprompt, &callGraphMgr, &outlineCtxMgr, &filectxMgr)
 	for {
-		var buf bytes.Buffer
-		// ctx.fileCtxMgr.WriteUsedDefs(&buf)
-		ctx.fileCtxMgr.WriteAutoLoadCtx(&buf)
-		fmt.Print(buf.String())
+		// var buf bytes.Buffer
+		// // ctx.fileCtxMgr.WriteUsedDefs(&buf)
+		// ctx.fileCtxMgr.WriteAutoLoadCtx(&buf)
+		// fmt.Print(buf.String())
 		req := ctx.genRequest(systemPompt)
 		stream, err := agent.model.CreateChatCompletionStream(context.TODO(), req)
 		if err != nil {
@@ -235,4 +262,18 @@ func (agent *BaseAgent) NewUserTask(userprompt string) {
 		}
 	}
 	agent.history = append(agent.history, ctx.getResult()...)
+}
+
+func DebugMsg(msg *openai.ChatCompletionRequest) {
+	for _, elem := range msg.Messages {
+		fmt.Printf("ROLE: %s\n", elem.Role)
+		fmt.Printf("CONTENT:\n%s\n", elem.Content)
+	}
+	for _, tool := range msg.Tools {
+		funcdef := tool.Function
+		fmt.Printf("NAME: %s\n", funcdef.Name)
+		fmt.Printf("DESC:\n%s\n", funcdef.Description)
+		b, _ := json.MarshalIndent(funcdef.Parameters, "", "  ")
+		fmt.Printf("PARA:\n%s\n", string(b))
+	}
 }

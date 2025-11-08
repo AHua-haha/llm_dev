@@ -15,7 +15,8 @@ import (
 )
 
 var loadFileTool = openai.FunctionDefinition{
-	Name: "load_file_context",
+	Name:   "load_file_context",
+	Strict: true,
 	Description: `
 Load the context of a given file.
 For source code file, it will load all the definition in the source code.
@@ -23,7 +24,8 @@ For example 'load_context_file src/foo.go' will load all definition in source co
 Use this tool when you want to examine the content in certain file
 	`,
 	Parameters: jsonschema.Definition{
-		Type: jsonschema.Object,
+		Type:                 jsonschema.Object,
+		AdditionalProperties: false,
 		Properties: map[string]jsonschema.Definition{
 			"file": {
 				Type: jsonschema.Array,
@@ -40,7 +42,8 @@ the file path array to load, e.g. ["src/foo.go", "src/test/bar.go"]
 }
 
 var loadFileDefsTool = openai.FunctionDefinition{
-	Name: "load_definition_context",
+	Name:   "load_definition_context",
+	Strict: true,
 	Description: `
 Load the context of some definition in a given file.
 For example, given code block in file src/foo.go
@@ -60,7 +63,8 @@ use this tool to load context of definiton, you should specify two parameters:
 - an array of the definition names you want to load, struct name, function name, variable name, e.g. ["baseUrl", "File", "GetFileContent"]
 	`,
 	Parameters: jsonschema.Definition{
-		Type: jsonschema.Object,
+		Type:                 jsonschema.Object,
+		AdditionalProperties: false,
 		Properties: map[string]jsonschema.Definition{
 			"file": {
 				Type:        jsonschema.String,
@@ -96,7 +100,8 @@ func NewFileCtxMgr(root string, buildOp *impl.BuildCodeBaseCtxOps) FileContentCt
 
 func (mgr *FileContentCtxMgr) writeAutoLoadCtx(buf *bytes.Buffer) {
 	description := `
-This section shows all the dynamic loaded context in this codebase.
+This section shows all the previous loaded context using tools "load_definition_context" and "load_file_context".
+If you need some relevant context, use tools "load_definition_context" and "load_file_context" to load.
 You should:
 - Examine the user's request and available codebase context information
 - Determine what context is truly relevant for the task.
