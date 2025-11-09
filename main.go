@@ -18,7 +18,9 @@ func main() {
 	// 	RootPath: "/root/workspace/llm_dev",
 	// 	Db:       database.GetDBClient().Database("llm_dev"),
 	// }
-	// op.ExtractDefs()
+	// op.GenAllDefs()
+	// op.GenAllUsedDefs()
+	// op.SetMinPreFix()
 	model := agent.NewModel("http://192.168.65.2:4000", "sk-1234")
 	agent := agent.NewBaseAgent("/root/workspace/llm_dev", *model)
 	for {
