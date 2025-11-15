@@ -190,7 +190,6 @@ func (self *AggregateChunk) res() openai.ChatCompletionMessage {
 }
 
 func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream, ctx *AgentContext) {
-	defer stream.Close()
 	var err error
 	aggregate := AggregateChunk{
 		toolCalls: make(map[int]openai.ToolCall),
@@ -246,7 +245,7 @@ func (agent *BaseAgent) NewUserTask(userprompt string) {
 	outlineCtxMgr := ctx.NewOutlineCtxMgr(agent.root, agent.buildOp)
 	buildContextMgr := ctx.BuildContextMgr{}
 	outlineCtxMgr.OpenDir(".")
-	ctx := NewAgentContext(agent.history, userprompt, &callGraphMgr, &outlineCtxMgr, &filectxMgr, &buildContextMgr)
+	ctx := NewAgentContext(agent.history, userprompt, &callGraphMgr, &outlineCtxMgr, &buildContextMgr, &filectxMgr)
 	for {
 		// var buf bytes.Buffer
 		// // ctx.fileCtxMgr.WriteUsedDefs(&buf)
@@ -258,6 +257,7 @@ func (agent *BaseAgent) NewUserTask(userprompt string) {
 			log.Error().Err(err).Msg("create chat completion stream failed")
 			break
 		}
+		defer stream.Close()
 		agent.handleResponse(stream, ctx)
 		if ctx.done() {
 			break

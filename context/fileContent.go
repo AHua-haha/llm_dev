@@ -123,6 +123,17 @@ You should:
 
 func (mgr *FileContentCtxMgr) WriteContext(buf *bytes.Buffer) {
 	mgr.writeAutoLoadCtx(buf)
+	buf.WriteString(`
+### Identify the relevant context ###
+
+Good workflow examples:
+- from top down, use 'get_directory_overview' tool to get the used definition of a directory. Get a overall understanding of the directory and how the directory is used and what in the directory is used.
+- Based on the used definition in directory, search for relevant context from the used definition.
+- Use 'load_file_context' tool to load all the definitions in a file, identify which definition is relevant.
+- Then use 'load_definition_context' tool to load the complete implementation of the definition.
+- Analyze the functionality of definitions, use 'find_reference' tool to examine where the definition is used and how the definition is used, analyze what the definition is used for.
+- Analyze definition implementation details, use 'find_used_definition' tool to examine the exact definition used within one function.
+`)
 }
 
 func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
@@ -134,7 +145,7 @@ func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
 		if err != nil {
 			return "", err
 		}
-		res := ""
+		res := "IMPORTANT: This only load the definitions in file, the implementations of definition is omitted. You can use 'load_definition_context' tool to load it.\n"
 		for _, v := range args.File {
 			err := mgr.loadFile(v)
 			if err != nil {

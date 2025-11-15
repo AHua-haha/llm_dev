@@ -414,7 +414,7 @@ func (op *BuildCodeBaseCtxOps) SetMinPreFix() {
 				Keyword:    useInfo.DefKeyword,
 				MinPrefix:  useInfo.DefFile,
 			}
-			continue
+			def = usedDef[key]
 		}
 
 		minPrefix := common.CommonRootDir(def.MinPrefix, useInfo.File)
@@ -437,7 +437,7 @@ func (op *BuildCodeBaseCtxOps) SetMinPreFix() {
 		if err != nil {
 			log.Error().Err(err).Any("def", def).Msg("update definition failed")
 		} else {
-			log.Info().Any("def keyword", def.Keyword).Msg("update def minprefix")
+			log.Info().Any("def keyword", def.Keyword).Any("min prefix", def.MinPrefix).Msg("update def minprefix")
 		}
 	}
 }

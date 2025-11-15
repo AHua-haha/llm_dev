@@ -11,7 +11,7 @@ import (
 )
 
 var prompt = `
-To help user with task, you can modify the codebase using edit action.
+To help user with task, you can modify the codebase by running different actions;
 To use the build system, you should strictly follow the instructions and action workflow, and examine the action context thoroughly.
 
 # Instruction
@@ -23,42 +23,61 @@ IMPORTANT: DO NOT make build plan if the user does not explicitly specified a bu
 
 # Action Workflow
 
-Use case: you can trigger action to edit the codebase to help users complete build tasks. You should follow the following workflow to trigger action.
+Each action has three properties:
+- Thought: your reasoning about what action to do next and the clearly definnd purpose of the action from the perspective of solving the task.
+- Type: the type of the action.
+- Result: the result of the executing the action.
 
-Each action edits one location in the codebase. Each action has four important properties:
-- Type:  the type of the action, e.g. insert. replace. new file. delete.
-- Location: the location the action is performed.
-- Purpose: the clearly defined purpose of the action from the perspective of completing the task
-- Content: the generated content for insert or replace.
+Different type of actions:
 
-<example>
-- Type: replace
-- Location: src/foo.go line 456-500
-- Purpose: add debug message for variable name in line 467
-- Content: ...
-</example>
+- Edit: ecit the codebase files.
 
-<example>
-- Type: insert
-- Location: src/foo.go line 78
-- Purpose: add a new function GetRes to get the result of the http request.
-- Content:"func GetRes(a hhtp.request) {}"
-</example>
-
+To execute an action, you should follow the following four phases.
 
 - Phase 1: Declare an action
-	Declare a new action, you should declare the type, location and purpose of action.
+	You should examine the user's task and the previously executed actions thoroughly, then think about what action to do next to accomplish the task. then you should declare the Thought and Type of action.
 - Phase 2: Load Context
-	load the relevant context to perform the edit, and the used symbol in the edit.
+	First load the file content that will be edited, then load the relevant context to perform the action.
 - Phase 3: Execute an action
 	execute the action, use the tool to execute the action.
+- Phase 4: Examine result
+	examine the result of executing the action.
 
-Different Types of Action:
-- Insert: insert new content after certain line in a file.
-- Replace: replace certain range of code in a file.
-- New file: create a new file with the file path.
+NEVER edit the file without loading the file content.
+
+# Principles
+
+You should follow the good principles:
+- When you want to modify existing code segment, it is good to keep the changes minial. Try to avoid changes of an entre code segment unless necessary.
+- Always load the relevant context before executing action if necessary.
+- Always imitate the existing code implementation.
+- For loading context, first figure out the exact definition of the symbols, load the definition code, then find all the references of the definition to check out how to use it. You should follow these use examples.
 
 `
+
+var appleDiff = openai.FunctionDefinition{
+	Name:   "apply_diff",
+	Strict: true,
+	Description: `
+Apply changes to a file using unified diff format.
+	`,
+	Parameters: jsonschema.Definition{
+		Type:                 jsonschema.Object,
+		AdditionalProperties: false,
+		Properties: map[string]jsonschema.Definition{
+			"file": {
+				Type:        jsonschema.String,
+				Description: "Path to the file to modify",
+			},
+			"diff": {
+				Type:        jsonschema.String,
+				Description: "Complete unified diff showing changes. Must include: --- and +++ headers, @@ hunk markers, context lines (space prefix), removed lines (- prefix), added lines (+ prefix). Include 3-5 lines of context before and after changes.",
+			},
+		},
+		Required: []string{"file", "diff"},
+	},
+}
+
 var newAction = openai.FunctionDefinition{
 	Name:   "declare_action",
 	Strict: true,
@@ -71,18 +90,14 @@ Declare a new edit action, you should specify the type location and purpose of a
 		Properties: map[string]jsonschema.Definition{
 			"type": {
 				Type:        jsonschema.String,
-				Description: "the type of the action, e.g. insert replace new file",
+				Description: "the type of the action",
 			},
-			"purpose": {
+			"thought": {
 				Type:        jsonschema.String,
-				Description: "the purpose of the action",
-			},
-			"location": {
-				Type:        jsonschema.String,
-				Description: "the location to perform the action",
+				Description: "the reasoning about what action to do next and the clearly definnd purpose of the action from the perspective of solving the task",
 			},
 		},
-		Required: []string{"type", "purpose", "location"},
+		Required: []string{"type", "thought"},
 	},
 }
 
@@ -145,9 +160,9 @@ Perform an replace action, replace certain block of the file.
 }
 
 type Action struct {
-	Type     string
-	Purpose  string
-	Location string
+	Type    string
+	Thought string
+	Result  string
 }
 
 type BuildContextMgr struct {
@@ -160,12 +175,12 @@ func (mgr *BuildContextMgr) WriteContext(buf *bytes.Buffer) {
 	buf.WriteString("# Action Status\n\n")
 	for i, action := range mgr.actions {
 		buf.WriteString(fmt.Sprintf("- Action %d:\n", i))
+		buf.WriteString(fmt.Sprintf("	Thought: %s\n", action.Thought))
 		buf.WriteString(fmt.Sprintf("	Type: %s\n", action.Type))
-		buf.WriteString(fmt.Sprintf("	Location: %s\n", action.Location))
-		buf.WriteString(fmt.Sprintf("	Purpose: %s\n", action.Purpose))
+		buf.WriteString(fmt.Sprintf("	Result: %s\n", action.Result))
 		buf.WriteByte('\n')
 	}
-	buf.WriteString("{EDIT ACTION}\n\n")
+	buf.WriteString("{END OF EDIT ACTION}\n\n")
 }
 
 func (mgr *BuildContextMgr) addAction(action Action) {
@@ -175,54 +190,65 @@ func (mgr *BuildContextMgr) addAction(action Action) {
 func (mgr *BuildContextMgr) GetToolDef() []model.ToolDef {
 	newActionHandler := func(argsStr string) (string, error) {
 		args := struct {
-			Type     string
-			Purpose  string
-			Location string
+			Type    string
+			Thought string
 		}{}
 		err := json.Unmarshal([]byte(argsStr), &args)
 		if err != nil {
 			return "", err
 		}
 		mgr.addAction(Action{
-			Type:     args.Type,
-			Purpose:  args.Purpose,
-			Location: args.Location,
+			Type:    args.Type,
+			Thought: args.Thought,
 		})
 		return "new action success", nil
 	}
-	insert := func(argsStr string) (string, error) {
+	applyDiffFunc := func(argsStr string) (string, error) {
 		args := struct {
-			File    string
-			Line    uint
-			Content string
+			File string
+			Diff string
 		}{}
 		err := json.Unmarshal([]byte(argsStr), &args)
 		if err != nil {
 			return "", err
 		}
-		fmt.Printf("insert to file %s:%d\n```\n%s\n```\n", args.File, args.Line, args.Content)
-		res := fmt.Sprintf("File: %s\nLine: %d\n```\n%s\n```\n", args.File, args.Line, args.Content)
-		return res, nil
+		fmt.Printf("Diff content:\n%s\n", args.Diff)
+		return "apply the edit success", nil
 	}
-	replace := func(argsStr string) (string, error) {
-		args := struct {
-			File      string
-			Startline uint
-			Endline   uint
-			Content   string
-		}{}
-		err := json.Unmarshal([]byte(argsStr), &args)
-		if err != nil {
-			return "", err
-		}
-		fmt.Printf("replace file %s:%d-%d\n```\n%s\n```\n", args.File, args.Startline, args.Endline, args.Content)
-		res := fmt.Sprintf("File: %s\nLine: %d-%d\n```\n%s\n```\n", args.File, args.Startline, args.Endline, args.Content)
-		return res, nil
-	}
+	// insert := func(argsStr string) (string, error) {
+	// 	args := struct {
+	// 		File    string
+	// 		Line    uint
+	// 		Content string
+	// 	}{}
+	// 	err := json.Unmarshal([]byte(argsStr), &args)
+	// 	if err != nil {
+	// 		return "", err
+	// 	}
+	// 	fmt.Printf("insert to file %s:%d\n```\n%s\n```\n", args.File, args.Line, args.Content)
+	// 	res := fmt.Sprintf("File: %s\nLine: %d\n```\n%s\n```\n", args.File, args.Line, args.Content)
+	// 	return res, nil
+	// }
+	// replace := func(argsStr string) (string, error) {
+	// 	args := struct {
+	// 		File      string
+	// 		Startline uint
+	// 		Endline   uint
+	// 		Content   string
+	// 	}{}
+	// 	err := json.Unmarshal([]byte(argsStr), &args)
+	// 	if err != nil {
+	// 		return "", err
+	// 	}
+	// 	fmt.Printf("replace file %s:%d-%d\n```\n%s\n```\n", args.File, args.Startline, args.Endline, args.Content)
+	// 	res := fmt.Sprintf("File: %s\nLine: %d-%d\n```\n%s\n```\n", args.File, args.Startline, args.Endline, args.Content)
+	// 	return res, nil
+	// }
 	res := []model.ToolDef{
 		{FunctionDefinition: newAction, Handler: newActionHandler},
-		{FunctionDefinition: insertAction, Handler: insert},
-		{FunctionDefinition: replaceAction, Handler: replace},
+		{FunctionDefinition: appleDiff, Handler: applyDiffFunc},
+		// {FunctionDefinition: insertAction, Handler: insert},
+		// {FunctionDefinition: replaceAction, Handler: replace},
 	}
 	return res
 

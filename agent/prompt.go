@@ -89,4 +89,66 @@ assistant: Clients are marked as failed in the ` + "`connectToServer`" + ` funct
 
 [END OF RESPONSE FORMAT]
 
+[TOOL USAGE]
+
+# Edit Tool
+
+When using edit tool to modify the file, you should follow the following rules.
+
+NEVER write prose explanations of what to change.
+NEVER rewrite entire files.
+ALWAYS output changes as unified diffs.
+
+Diff Format Rules:
+1. Start with --- and +++ showing filename
+2. Use @@ to mark change location with line numbers
+3. Include 3-5 lines of context before and after changes
+4. Use - prefix for removed lines
+5. Use + prefix for added lines
+6. Use space prefix for context lines
+7. Match indentation and whitespace EXACTLY
+
+Example of correct format:
+
+<example>
+--- routes/api.py
++++ routes/api.py
+@@ -15,7 +15,9 @@
+ def get_user(id):
+     user = User.query.get(id)
+-    return jsonify(user.to_dict())
++    if user is None:
++        return jsonify({'error': 'User not found'}), 404
++    return jsonify(user.to_dict())
+ 
+ def list_users():
+     return jsonify([u.to_dict() for u in User.query.all()])
+</example>
+
+Multiple hunks in one file.
+<example>
+--- auth/session.py
++++ auth/session.py
+@@ -1,4 +1,5 @@
+ from flask import session
++import logging
+ from models import User
+ 
+@@ -15,6 +16,7 @@
+ def login(username, password):
+     user = authenticate(username, password)
++    logging.info(f"User {username} logged in")
+     session.start(user)
+     return True
+ 
+@@ -42,5 +44,6 @@
+ def logout():
++    logging.info(f"User {session.user_id} logged out")
+     session.end()
+     return True
+</example>
+
+
+[END OF TOOL USAGE]
+
 `

@@ -256,8 +256,38 @@ To help user with task, you should use this section to:
 }
 
 func (mgr *OutlineContextMgr) WriteContext(buf *bytes.Buffer) {
-	mgr.writeFileTree(buf)
-	mgr.writeOutline(buf)
+	// mgr.writeFileTree(buf)
+	// mgr.writeOutline(buf)
+}
+
+func (mgr *OutlineContextMgr) writeOverview(buf *bytes.Buffer, path string) {
+	node, err := mgr.findFileTreeNode(path)
+	if err != nil {
+		buf.WriteString(fmt.Sprintf("load definition overview for %s failed\n", path))
+		return
+	}
+	buf.WriteString(fmt.Sprintf("load definition overview for %s success\n\n", path))
+	dir_path := node.relpath
+	if !node.isDir {
+		dir_path = filepath.Dir(dir_path)
+	}
+	entries, err := os.ReadDir(filepath.Join(mgr.rootPath, dir_path))
+	if err != nil {
+		return
+	}
+	buf.WriteString("Directory Structure\n")
+	buf.WriteString(fmt.Sprintf("# %s\n", dir_path))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			buf.WriteString(fmt.Sprintf("- dir %s\n", entry.Name()))
+		} else {
+			buf.WriteString(fmt.Sprintf("- file %s\n", entry.Name()))
+		}
+	}
+	buf.WriteByte('\n')
+	buf.WriteString("Directory Definition Overview:\n")
+	mgr.writeLeafNode(buf, node.relpath, node.isDir)
+	buf.WriteString("IMPORTANT: This only shows the definition declared within one directory or file and used by code out of this directory or file. Definitions not being used is omitted. You can use 'load_file_context' and 'load_definition_context' tools to check the detailed context.\n")
 }
 
 func (mgr *OutlineContextMgr) GetToolDef() []model.ToolDef {
@@ -269,15 +299,9 @@ func (mgr *OutlineContextMgr) GetToolDef() []model.ToolDef {
 		if err != nil {
 			return "", err
 		}
-		var res string
-		p := filepath.Dir(args.Path)
-		_, err = mgr.OpenDir(p)
-		if err != nil {
-			res = fmt.Sprintf("load definition overview for %s failed", args.Path)
-		} else {
-			res = fmt.Sprintf("load definition overview for %s success", args.Path)
-		}
-		return res, nil
+		var buf bytes.Buffer
+		mgr.writeOverview(&buf, args.Path)
+		return buf.String(), nil
 	}
 	res := []model.ToolDef{
 		{FunctionDefinition: dirOverview, Handler: dirOverviewHandler},
