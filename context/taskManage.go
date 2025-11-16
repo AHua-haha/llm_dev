@@ -197,23 +197,21 @@ func (mgr *TaskContextMgr) createTask(content string, subTask bool) string {
 }
 func (mgr *TaskContextMgr) writeTaskList(buf *bytes.Buffer) {
 	buf.WriteString("# Current Task List\n\n")
-	if len(mgr.TaskList) == 0 {
-		buf.WriteString("NO TASK\n")
-		return
-	}
 	for _, mainTask := range mgr.TaskList {
 		buf.WriteString(fmt.Sprintf("Task %s: %s (Status: %s)\n", mainTask.TaskID, mainTask.Content, mainTask.Status))
 		if mainTask.Status == Completed {
-			buf.WriteString(fmt.Sprintf("Task %s Summary: %s\n\n", mainTask.TaskID, mainTask.Summary))
-		} else {
+			buf.WriteString(fmt.Sprintf("Task %s Summary: %s\n", mainTask.TaskID, mainTask.Summary))
+		}
+		if mainTask.Status == Progress && len(mainTask.SubTasks) != 0 {
 			buf.WriteString("SubTasks:\n")
 			for _, subTask := range mainTask.SubTasks {
 				buf.WriteString(fmt.Sprintf("- Task %s: %s (Status: %s)\n", subTask.TaskID, subTask.Content, subTask.Status))
 				if subTask.Status == Completed {
-					buf.WriteString(fmt.Sprintf("  Task %s Summary: %s\n\n", subTask.TaskID, subTask.Summary))
+					buf.WriteString(fmt.Sprintf("  Task %s Summary: %s\n", subTask.TaskID, subTask.Summary))
 				}
 			}
 		}
+		buf.WriteByte('\n')
 	}
 	if mgr.CurrentMainTask == nil {
 		buf.WriteString("No in progress task\n")
@@ -232,14 +230,15 @@ You can do:
 - If task is finished, finish the task and set summary for task.
 - Create a new task to further solve the user's task.
 
+IMPORTANT: If there is NO in progress task, you MUST declare a task first before you execute any actions.
 `)
 }
 
 func (mgr *TaskContextMgr) WriteContext(buf *bytes.Buffer) {
-	buf.WriteString("[TASK MANAGEMENT]\n")
+	buf.WriteString("### TASK MANAGEMENT ###\n")
 	buf.WriteString(taskPrompt)
 	mgr.writeTaskList(buf)
-	buf.WriteString("[END OF TASK MANAGEMENT]\n")
+	buf.WriteString("### END OF TASK MANAGEMENT ###\n")
 }
 
 func (mgr *TaskContextMgr) GetToolDef() []model.ToolDef {
