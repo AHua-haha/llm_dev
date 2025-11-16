@@ -3,6 +3,7 @@ package context
 import (
 	"bytes"
 	"fmt"
+	"llm_dev/codebase/impl"
 	"llm_dev/database"
 	"path/filepath"
 	"strings"
@@ -47,14 +48,6 @@ func TestFileTree(t *testing.T) {
 	t.Run("test file tree node", func(t *testing.T) {
 		database.InitDB()
 		defer database.CloseDB()
-		handler := func(node *FileTreeNode) {
-			fmt.Printf("node.relpath: %v\n", node.relpath)
-		}
-		mgr := NewOutlineCtxMgr("/root/workspace/llm_dev", nil)
-		mgr.walkNode(mgr.fileTree, handler)
-		mgr.OpenDir("codebase/impl")
-		fmt.Printf("mgr.fileTree.children: %v\n", mgr.fileTree.children)
-		mgr.walkNode(mgr.fileTree, handler)
 	})
 }
 
@@ -62,10 +55,15 @@ func TestWrite(t *testing.T) {
 	t.Run("test write outline", func(t *testing.T) {
 		database.InitDB()
 		defer database.CloseDB()
-		mgr := NewOutlineCtxMgr("/root/workspace/llm_dev", nil)
-		mgr.OpenDir(".")
+		mgr := OutlineContextMgr{
+			rootPath: "/root/workspace/llm_dev",
+			buildCtxOp: &impl.BuildCodeBaseCtxOps{
+				RootPath: "/root/workspace/llm_dev",
+				Db:       database.GetDBClient().Database("llm_dev"),
+			},
+		}
 		var buf bytes.Buffer
-		mgr.writeOutline(&buf)
-		fmt.Printf("%v\n", buf.String())
+		mgr.writeOverview(&buf, ".")
+		fmt.Printf("%s\n", buf.String())
 	})
 }
