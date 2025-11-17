@@ -244,7 +244,9 @@ func (agent *BaseAgent) NewUserTask(userprompt string) {
 	filectxMgr := ctx.NewFileCtxMgr(agent.root, agent.buildOp)
 	outlineCtxMgr := ctx.NewOutlineCtxMgr(agent.root, agent.buildOp)
 	buildContextMgr := ctx.BuildContextMgr{}
-	taskCtxMgr := ctx.TaskContextMgr{}
+	taskCtxMgr := ctx.TaskContextMgr{
+		UserTask: userprompt,
+	}
 	ctx := NewAgentContext(agent.history, userprompt, &callGraphMgr, &outlineCtxMgr, &buildContextMgr, &filectxMgr, &taskCtxMgr)
 	for {
 		// var buf bytes.Buffer

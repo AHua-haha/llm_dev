@@ -11,56 +11,18 @@ import (
 )
 
 var taskPrompt = `
-You are working on a Thought -> Action -> Summary workflow to help user solve task.
-Each phase serve different purpose:
+You are given a user's task, you should help user finish the task.
 
-- Thought: examine the user's task and previous finished task, think about what to do next to solve the task, and declare new task.
-- Action: Use different tools to solve the current task.
-- Summary: After the task is finished, summary what this task has done.
+Your job:
+- Understand the user's goal.
+- Break it into clear, ordered tasks.
+- Use the available tools to complete those tasks.
+- Keep the project in a working state (run tests when appropriate).
+- Record conclusion and result of your analyze or yout action or you reasoning.
 
-# Task List
-You can create a two level task list:
-- Main Task: Decompose user's tasks to main tasks by task purpose from a high level perspective.
-- Subtask: each subtask should aim at one concrete thing to solve the main task.
+# Tool Usage Guidelines
 
-Task list Example:
-<example>
-
-Task 1: Identify the relevant context in the codebase. (Status: completed)
-Task 1 Summary: the summary of the conclusion and result of the task.
-
-Task 2: Add the log info message. (Status: in progress)
-SubTasks:
-- Task 2.1: add log info message for function A (status: completed)
-  Task 2.1 Summary:
-- Task 2.2: add log info message for function B (status: in progress)
-  Task 2.2 Summary:
-
-</example>
-
-# Best Practice
-
-Here are some best practice for task management.
-
-## Decompose and create task
-
-Good Example to Decompose and Create Task:
-
-- Create main task from a high level perspective, Main Task has a overall goal, 
-  For example: analyze and identify relevant context for log function, 
-  implement the log info function, check error for implementaion, 
-  run test for the implementation, fix bug for run test.
-
-- Create subtask to solve one concrete part of the main task, 
-  For example: identify relevant context for the <symbol>, 
-  find out how <symbol> is implemented, find out the main workflow for <symbol>, 
-  add log info message for function <name>.
-
-
-
-## Action and Tool Usage
-
-Good workflow examples to Identify the relevant context:
+Good workflow examples to Identify the relevant context use tools.
 - from top down, use 'get_directory_overview' tool to get the used definition of a directory. Get a overall understanding of the directory and how the directory is used and what in the directory is used.
 - Based on the used definition in directory, search for relevant context from the used definition.
 - Use 'load_file_context' tool to load all the definitions in a file, identify which definition is relevant.
@@ -68,25 +30,31 @@ Good workflow examples to Identify the relevant context:
 - Analyze the functionality of definitions, use 'find_reference' tool to examine where the definition is used and how the definition is used, analyze what the definition is used for.
 - Analyze definition implementation details, use 'find_used_definition' tool to examine the exact definition used within one function.
 
-## Summary task result and conclusion
+# Record Conclusion and Result
 
-Good Example to symmary task:
-- Summary the main task based on all the subtask of the main task.
-- Summary the result and conclusion of the tasks to short, concise, straightforward statement. 
-  For example: Implement a new log function <identifier> in <file>, 
-  function <identifier> in <file> is used for ..., 
-  the main workflow is implemented in function <identifier> in <file>
+IMPORTANT: You should record all conclusinos and results that is crucial to complete the task while solving the task.
+IMPORTANT: Once you get a conclusion or result, you should record it IMMEDIATELY use tools.
 
-- Add reference to the context in the codebase for each statement. Reference format: identifier file, For example: function NewBuildOps in src/agent.go
+You MUST record conclusion and result in this fotmat:
+- Type: the type of the conclusion, e.g. analyze, build, plain text.
+- Statement: the concise and straightforward statement of the conclusion.
+- References: the location of referenced code in the codebase, e.g. src/test.go:22, src/common/utils.go:56-189
+
+There are three different types of conclusion and result, Analyze, Build, Plain Text.
+1. Analyze: the conclusion of analyze and understand the codebase that is crucial to colve the task.
+2. Build: the result of editing the codebase that is crucial to colve the task.
+3. Plain Text: other conclusion that is crucial to solve the task.
+
+Guidelines:
+- Make each conclusion minimal, each conclusion should be about exact one point.
+- Make conclusion concise and short and straightforward.
 
 `
 var createTask = openai.FunctionDefinition{
 	Name:   "create_task",
 	Strict: true,
 	Description: `
-Create a new task, you can create a main task or a subtask, you must specify the content of the task.
-You CAN NOT create a new task if the previous task is not completed.
-You MUST finish that task first.
+Create a new task
 `,
 	Parameters: jsonschema.Definition{
 		Type:                 jsonschema.Object,
@@ -96,37 +64,57 @@ You MUST finish that task first.
 				Type:        jsonschema.String,
 				Description: "the content of the task, what this task do",
 			},
-			"type": {
-				Type:        jsonschema.String,
-				Description: "whether the task is a main task or subtask",
-				Enum:        []string{"main task", "subtask"},
-			},
 		},
-		Required: []string{"content", "type"},
+		Required: []string{"content"},
 	},
 }
 var finishTask = openai.FunctionDefinition{
 	Name:   "finish_task",
 	Strict: true,
 	Description: `
-Finish the current task, you must specify the summary of the task.
-You MUST finish the subtask first and then finish the main task.
+Finish the current working task.
 `,
 	Parameters: jsonschema.Definition{
 		Type:                 jsonschema.Object,
 		AdditionalProperties: false,
 		Properties: map[string]jsonschema.Definition{
-			"summary": {
-				Type:        jsonschema.String,
-				Description: "the summary of this task",
-			},
-			"type": {
-				Type:        jsonschema.String,
-				Description: "whether the task is a main task or subtask",
-				Enum:        []string{"main task", "subtask"},
+			"id": {
+				Type:        jsonschema.Number,
+				Description: "the id of the task",
 			},
 		},
-		Required: []string{"summary", "type"},
+		Required: []string{"id"},
+	},
+}
+var record = openai.FunctionDefinition{
+	Name:   "record_conclusion",
+	Strict: true,
+	Description: `
+Record conclusinos and results that is crucial to complete the task
+`,
+	Parameters: jsonschema.Definition{
+		Type:                 jsonschema.Object,
+		AdditionalProperties: false,
+		Properties: map[string]jsonschema.Definition{
+			"type": {
+				Type:        jsonschema.String,
+				Description: "the type of the conclusion or result, e.g. analyze, build, plain text",
+				Enum:        []string{"Analyze", "Build", "Plain Text"},
+			},
+			"statement": {
+				Type:        jsonschema.String,
+				Description: "the concise and straightforward statement of the conclusion",
+			},
+			"references": {
+				Type:        jsonschema.Array,
+				Description: "array of locations of referenced code in the codebase",
+				Items: &jsonschema.Definition{
+					Type:        jsonschema.String,
+					Description: "the location of the code line or block, e.g. src/test.go:22, src/utils.go:678, src/common/impl.go:224-445",
+				},
+			},
+		},
+		Required: []string{"type", "statement", "references"},
 	},
 }
 
@@ -138,99 +126,86 @@ const (
 )
 
 type Task struct {
-	TaskID   string
-	Content  string
-	Summary  string
-	Status   TaskStatus
-	SubTasks []*Task
+	ID      uint
+	Content string
+	Status  TaskStatus
+}
+
+func (t *Task) toString() string {
+	return fmt.Sprintf("(%-11s) Task %d: %s", t.Status, t.ID, t.Content)
+}
+
+type Conclusion struct {
+	Type       string
+	Statement  string
+	References []string
+}
+
+func (c *Conclusion) toString() string {
+	return fmt.Sprintf("Type: %s, Statement: %s, References: %v", c.Type, c.Statement, c.References)
 }
 
 type TaskContextMgr struct {
-	TaskList        []*Task
-	CurrentMainTask *Task
-	CurrentSubTask  *Task
+	UserTask    string
+	TaskList    []*Task
+	CurrentTask *Task
+	Records     []Conclusion
 }
 
-func (mgr *TaskContextMgr) finishTask(summary string, subTask bool) string {
-	var task *Task
-	if subTask {
-		if mgr.CurrentSubTask == nil {
-			return ""
-		}
-		task = mgr.CurrentSubTask
-		mgr.CurrentSubTask.Status = Completed
-		mgr.CurrentSubTask.Summary = summary
-		mgr.CurrentSubTask = nil
-	} else {
-		if mgr.CurrentMainTask == nil || mgr.CurrentSubTask != nil {
-			return ""
-		}
-		task = mgr.CurrentMainTask
-		mgr.CurrentMainTask.Status = Completed
-		mgr.CurrentMainTask.Summary = summary
-		mgr.CurrentMainTask = nil
+func (mgr *TaskContextMgr) finishTask(id uint) string {
+	if mgr.CurrentTask == nil || mgr.CurrentTask.ID != id {
+		return fmt.Sprintf("finish Task %d failed", id)
 	}
-	return fmt.Sprintf("Complete task [Task %s: %s]", task.TaskID, task.Content)
+	mgr.CurrentTask.Status = Completed
+	mgr.CurrentTask = nil
+	return fmt.Sprintf("finish Task %d success", id)
 }
 
-func (mgr *TaskContextMgr) createTask(content string, subTask bool) string {
-	task := Task{
+func (mgr *TaskContextMgr) createTask(content string) string {
+	if mgr.CurrentTask != nil {
+		return "create new task failed because previous task not finished"
+	}
+	task := &Task{
 		Content: content,
 		Status:  Progress,
 	}
-	if subTask {
-		if mgr.CurrentSubTask != nil {
-			return fmt.Sprintf("Previous subtask [Task %s: %s] is not finished, can not create new subtask", mgr.CurrentSubTask.TaskID, mgr.CurrentSubTask.Content)
-		}
-		mgr.CurrentMainTask.SubTasks = append(mgr.CurrentMainTask.SubTasks, &task)
-		mgr.CurrentSubTask = &task
-		task.TaskID = fmt.Sprintf("%d.%d", len(mgr.TaskList), len(mgr.CurrentMainTask.SubTasks))
-	} else {
-		if mgr.CurrentMainTask != nil {
-			return fmt.Sprintf("Previous main task [Task %s: %s] is not finished, can not create new main task", mgr.CurrentMainTask.TaskID, mgr.CurrentMainTask.Content)
-		}
-		mgr.TaskList = append(mgr.TaskList, &task)
-		mgr.CurrentMainTask = &task
-		task.TaskID = fmt.Sprintf("%d", len(mgr.TaskList))
-	}
-	return fmt.Sprintf("Create new task [Task %s: %s]", task.TaskID, task.Content)
+	mgr.TaskList = append(mgr.TaskList, task)
+	task.ID = uint(len(mgr.TaskList))
+	mgr.CurrentTask = task
+	return fmt.Sprintf("create new Task %d: %s", task.ID, task.Content)
 }
 func (mgr *TaskContextMgr) writeTaskList(buf *bytes.Buffer) {
-	buf.WriteString("# Current Task List\n\n")
-	for _, mainTask := range mgr.TaskList {
-		buf.WriteString(fmt.Sprintf("Task %s: %s (Status: %s)\n", mainTask.TaskID, mainTask.Content, mainTask.Status))
-		if mainTask.Status == Completed {
-			buf.WriteString(fmt.Sprintf("Task %s Summary: %s\n", mainTask.TaskID, mainTask.Summary))
-		}
-		if mainTask.Status == Progress && len(mainTask.SubTasks) != 0 {
-			buf.WriteString("SubTasks:\n")
-			for _, subTask := range mainTask.SubTasks {
-				buf.WriteString(fmt.Sprintf("- Task %s: %s (Status: %s)\n", subTask.TaskID, subTask.Content, subTask.Status))
-				if subTask.Status == Completed {
-					buf.WriteString(fmt.Sprintf("  Task %s Summary: %s\n", subTask.TaskID, subTask.Summary))
-				}
-			}
-		}
-		buf.WriteByte('\n')
-	}
-	if mgr.CurrentMainTask == nil {
-		buf.WriteString("No in progress task\n")
+	buf.WriteString("# Task List & Conclusion\n\n")
+	buf.WriteString(fmt.Sprintf("User's overall goal:\n%s\n\n", mgr.UserTask))
+	buf.WriteString("1.** Conclusions & Results **\n\n")
+	if len(mgr.Records) == 0 {
+		buf.WriteString("NO conclusions\n")
 	} else {
-		mainTask := mgr.CurrentMainTask
-		buf.WriteString("You are now working on:\n")
-		buf.WriteString(fmt.Sprintf("Task %s: %s (Status: %s)\n", mainTask.TaskID, mainTask.Content, mainTask.Status))
-		if mgr.CurrentSubTask != nil {
-			buf.WriteString("SubTasks:\n")
-			buf.WriteString(fmt.Sprintf("- Task %s: %s (Status: %s)\n", mgr.CurrentSubTask.TaskID, mgr.CurrentSubTask.Content, mgr.CurrentSubTask.Status))
+		for _, record := range mgr.Records {
+			buf.WriteString(record.toString())
+			buf.WriteByte('\n')
 		}
+	}
+	buf.WriteByte('\n')
+	buf.WriteString("2.** Task List **\n\n")
+	if len(mgr.TaskList) == 0 {
+		buf.WriteString("NO tasks\n")
+	} else {
+		for _, task := range mgr.TaskList {
+			buf.WriteString(fmt.Sprintf("%s\n", task.toString()))
+		}
+	}
+	buf.WriteByte('\n')
+	if mgr.CurrentTask != nil {
+		buf.WriteString(fmt.Sprintf("Current Working Task:\nTask %d: %s\n", mgr.CurrentTask.ID, mgr.CurrentTask.Content))
 	}
 	buf.WriteString(`
-You can do:
-- Keep running the current task, use tools to solve the task.
-- If task is finished, finish the task and set summary for task.
-- Create a new task to further solve the user's task.
+You CAN do:
+- finish task and create the next task.
+- using tools to complete the current working task
+- record conclusion and result
 
-IMPORTANT: If there is NO in progress task, you MUST declare a task first before you execute any actions.
+IMPORTANT: If there is not a working task, you MUST create a task first before you do other thing.
 `)
 }
 
@@ -242,43 +217,47 @@ func (mgr *TaskContextMgr) WriteContext(buf *bytes.Buffer) {
 }
 
 func (mgr *TaskContextMgr) GetToolDef() []model.ToolDef {
+	recordHandler := func(argsStr string) (string, error) {
+		args := struct {
+			Type       string
+			Statement  string
+			References []string
+		}{}
+		err := json.Unmarshal([]byte(argsStr), &args)
+		if err != nil {
+			return "", err
+		}
+		mgr.Records = append(mgr.Records, Conclusion{
+			Type:       args.Type,
+			Statement:  args.Statement,
+			References: args.References,
+		})
+		return fmt.Sprintf("Record conclusion: %s success", args.Statement), nil
+	}
 	createTaskHandler := func(argsStr string) (string, error) {
 		args := struct {
 			Content string
-			Type    string
 		}{}
 		err := json.Unmarshal([]byte(argsStr), &args)
 		if err != nil {
 			return "", err
 		}
-		var subtask bool
-		if args.Type == "subtask" {
-			subtask = true
-		} else if args.Type == "main task" {
-			subtask = false
-		}
-		return mgr.createTask(args.Content, subtask), nil
+		return mgr.createTask(args.Content), nil
 	}
 	finishTaskHandler := func(argsStr string) (string, error) {
 		args := struct {
-			Summary string
-			Type    string
+			Id uint
 		}{}
 		err := json.Unmarshal([]byte(argsStr), &args)
 		if err != nil {
 			return "", err
 		}
-		var subtask bool
-		if args.Type == "subtask" {
-			subtask = true
-		} else if args.Type == "main task" {
-			subtask = false
-		}
-		return mgr.finishTask(args.Summary, subtask), nil
+		return mgr.finishTask(args.Id), nil
 	}
 	res := []model.ToolDef{
 		{FunctionDefinition: createTask, Handler: createTaskHandler},
 		{FunctionDefinition: finishTask, Handler: finishTaskHandler},
+		{FunctionDefinition: record, Handler: recordHandler},
 	}
 	return res
 }
