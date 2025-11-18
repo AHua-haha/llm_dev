@@ -220,7 +220,8 @@ func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream, ctx 
 	ctx.addMessage(resp)
 	for _, toolCall := range resp.ToolCalls {
 		msg, err := ctx.toolCall(toolCall)
-		file.WriteString(fmt.Sprintf("TOOL CALL:\n%s\n", msg.Content))
+		file.WriteString(fmt.Sprintf("%s, %s\n", toolCall.Function.Name, toolCall.Function.Arguments))
+		file.WriteString(fmt.Sprintf("TOOL CALL RESULT:\n%s\n", msg.Content))
 		if err != nil {
 			log.Error().Err(err).Any("toolcall", toolCall).Msg("tool call failed")
 		} else {
@@ -245,7 +246,10 @@ func (agent *BaseAgent) NewUserTask(userprompt string) {
 	outlineCtxMgr := ctx.NewOutlineCtxMgr(agent.root, agent.buildOp)
 	buildContextMgr := ctx.BuildContextMgr{}
 	taskCtxMgr := ctx.NewTaskCtxMgr(userprompt)
-	ctx := NewAgentContext(agent.history, userprompt, &callGraphMgr, &outlineCtxMgr, &buildContextMgr, &filectxMgr, &taskCtxMgr)
+	readMgr := ctx.ReadContextMgr{
+		Root: agent.root,
+	}
+	ctx := NewAgentContext(agent.history, userprompt, &callGraphMgr, &outlineCtxMgr, &buildContextMgr, &filectxMgr, &readMgr, &taskCtxMgr)
 	for {
 		// var buf bytes.Buffer
 		// // ctx.fileCtxMgr.WriteUsedDefs(&buf)
