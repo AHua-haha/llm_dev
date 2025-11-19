@@ -13,7 +13,7 @@ func TestReadMgr(t *testing.T) {
 		}
 		mgr.readContent("context.log", 1, "after")
 		var buf bytes.Buffer
-		mgr.WriteContent(&buf)
+		mgr.WriteContext(&buf)
 		fmt.Printf("%s\n", buf.String())
 	})
 }

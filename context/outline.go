@@ -128,7 +128,7 @@ func (mgr *OutlineContextMgr) writeOverview(buf *bytes.Buffer, path string) {
 	buf.WriteByte('\n')
 	buf.WriteString("Directory Definition Overview:\n")
 	mgr.writeLeafNode(buf, path, info.IsDir())
-	buf.WriteString("IMPORTANT: This only shows the definition declared within one directory or file and used by code out of this directory or file. Definitions not being used is omitted. You can use 'load_file_context' and 'load_definition_context' tools to check the detailed context.\n")
+	buf.WriteString("IMPORTANT: This only shows the definition declared within one directory or file and used by code out of this directory or file. Definitions not being used is omitted. You can use 'load_file_definition' and 'load_definition_detail' tools to check the detailed context.\n")
 }
 
 func (mgr *OutlineContextMgr) GetToolDef() []model.ToolDef {

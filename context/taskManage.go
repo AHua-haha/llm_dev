@@ -17,16 +17,6 @@ You have access to 'create_task', 'finish_task' tools for task management, 'reco
 - finish task: mark the task completed IMMEDIATELY after you finish the task, you MUST specify the task result success or fail.
 - record conclusion: record all conclusinos and results that is crucial to complete the task while doing the task. Once you get a conclusion or result, record it IMMEDIATELY.
 
-# Tool Usage Guidelines
-
-Good workflow examples to Identify the relevant context use tools.
-- from top down, use 'get_directory_overview' tool to get the used definition of a directory. Get a overall understanding of the directory and how the directory is used and what in the directory is used.
-- Based on the used definition in directory, search for relevant context from the used definition.
-- Use 'load_file_context' tool to load all the definitions in a file, identify which definition is relevant.
-- Then use 'load_definition_context' tool to load the complete implementation of the definition.
-- Analyze the functionality of definitions, use 'find_reference' tool to examine where the definition is used and how the definition is used, analyze what the definition is used for.
-- Analyze definition implementation details, use 'find_used_definition' tool to examine the exact definition used within one function.
-
 `
 var createTask = openai.FunctionDefinition{
 	Name:   "create_task",
@@ -154,6 +144,9 @@ There are three different types of conclusion and result, Analyze, Build, Plain 
 1. Analyze: the conclusion of analyze and understand the codebase that is crucial to colve the task.
 2. Build: the result of editing the codebase that is crucial to colve the task.
 3. Plain Text: other conclusion that is crucial to solve the task.
+
+When to record plain text conclusion:
+- you search and get some plain text, and the text refers to some code in the project, record the conclusion.
 
 IMPORTANT: You should record all conclusinos and results that is crucial to complete the task while solving the task.
 IMPORTANT: Once you get a conclusion or result, you should record it IMMEDIATELY use tools.

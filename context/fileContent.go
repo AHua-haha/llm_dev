@@ -15,13 +15,17 @@ import (
 )
 
 var loadFileTool = openai.FunctionDefinition{
-	Name:   "load_file_context",
+	Name:   "load_file_definition",
 	Strict: true,
 	Description: `
-Load the context of a given file.
-For source code file, it will load all the definition in the source code.
-For example 'load_context_file src/foo.go' will load all definition in source code src/foo.go.
-Use this tool when you want to examine the content in certain file
+Load all the definition of a given source code file.
+IMPORTANT: this ONLY load the declaration of the definition, the implementation content is omitted.
+IMPORTANT: use 'load_definition_detail' to check the whole content of the definition.
+
+Usage:
+- use this to see what definition are declared in a file, understand the source code file from a high level.
+- identify which defintion is relevant, load the detail content then.
+- 
 	`,
 	Parameters: jsonschema.Definition{
 		Type:                 jsonschema.Object,
@@ -42,12 +46,12 @@ the file path array to load, e.g. ["src/foo.go", "src/test/bar.go"]
 }
 
 var loadFileDefsTool = openai.FunctionDefinition{
-	Name:   "load_definition_context",
+	Name:   "load_definition_detail",
 	Strict: true,
 	Description: `
-Load the context of some definition in a given file.
-For example, given code block in file src/foo.go
-` + "```" + `
+Load all the content of some definition in a given file.
+
+<example>
 # src/foo.go
 var baseUrl string
 type File struct {
@@ -56,12 +60,16 @@ type File struct {
 }
 
 func GetFileContent(file string)
-` + "```" + `
-the code block just show the definition in the code file, if you want to get the detailed content of some definiton,
-use this tool to load context of definiton, you should specify two parameters:
-- the file path, e.g. src/foo.go
-- an array of the definition names you want to load, struct name, function name, variable name, e.g. ["baseUrl", "File", "GetFileContent"]
-	`,
+
+func testrun()
+
+function call load_definition_detail file= src/foo.go identifier={"GetFileContent", "testrun"}
+</example>
+
+Usage:
+- use the definition identifier to get the full content of the implementation.
+
+`,
 	Parameters: jsonschema.Definition{
 		Type:                 jsonschema.Object,
 		AdditionalProperties: false,
@@ -70,15 +78,15 @@ use this tool to load context of definiton, you should specify two parameters:
 				Type:        jsonschema.String,
 				Description: "the file path to load, e.g. src/foo.go",
 			},
-			"defsName": {
+			"identifiers": {
 				Type: jsonschema.Array,
 				Items: &jsonschema.Definition{
 					Type: jsonschema.String,
 				},
-				Description: `an array of the definition names you want to load, struct name, function name, variable name, e.g. ["baseUrl", "File", "GetFileContent"]`,
+				Description: `an array of the definition identifier you want to load, struct name, function name, variable name, e.g. ["baseUrl", "File", "GetFileContent"]`,
 			},
 		},
-		Required: []string{"file", "defsName"},
+		Required: []string{"file", "identifiers"},
 	},
 }
 
@@ -100,16 +108,27 @@ func NewFileCtxMgr(root string, buildOp *impl.BuildCodeBaseCtxOps) FileContentCt
 
 func (mgr *FileContentCtxMgr) writeAutoLoadCtx(buf *bytes.Buffer) {
 	description := `
-This section shows all the previous loaded context using tools "load_definition_context" and "load_file_context".
-If you need some relevant context, use tools "load_definition_context" and "load_file_context" to load.
-You should:
-- Examine the user's request and available codebase context information
-- Determine what context is truly relevant for the task.
-- If you need certain context, load the relevant context using the tools provided.
-- If NO additional context is needed, Continue with your response conversationally
+This section shows all the loaded definitions of source code.
+You have access to 'load_file_definition' and 'load_definition_detail' tools to load the definition. 'find_reference' and 'find_used_definition' tools to search for relevant definitions, 'get_directory_overview' tool to get the definition overview.
+
+Usage:
+- from top down, use 'get_directory_overview' tool to get the used definition of a directory. Get a overall understanding of the directory and how the directory is used and what in the directory is used.
+- Based on the used definition in directory, search for relevant context from the used definition.
+- Use 'load_file_definition' tool to load all the definitions in a file, identify which definition is relevant.
+- Then use 'load_definition_detail' tool to load the complete implementation of the definition.
+- Analyze the functionality of definitions, use 'find_reference' tool to examine where the definition is used and how the definition is used, analyze what the definition is used for.
+- Analyze definition implementation details, use 'find_used_definition' tool to examine the exact definition used within one function.
+
+When to use the definition oriented tools
+- if you know the exact defintion infomation, use thers tools to get the infomation you want.
+- if you want to search for the exact definition type infomation, not just with the same name text. use these definition tools.
+- if you want to search for the definition relation, like used and referenced, use thses definition tools
+
+When to use the 'grep' tools
+- if you only have plain text infomation, use grep to search.
 
 `
-	buf.WriteString("## CODEBASE LOADED FILE CONTEXT ##\n\n")
+	buf.WriteString("## CODEBASE DEFINITION ##\n\n")
 	buf.WriteString(description)
 	buf.WriteString("```\n")
 	for path, codefile := range mgr.autoLoadCtx {
@@ -118,7 +137,7 @@ You should:
 		fc.WriteContent(buf, filepath.Join(mgr.rootPath, path))
 	}
 	buf.WriteString("```\n")
-	buf.WriteString("## END OF CODEBASE LOADED FILE CONTEXT ##\n\n")
+	buf.WriteString("## END OF CODEBASE DEFINITION ##\n\n")
 }
 
 func (mgr *FileContentCtxMgr) WriteContext(buf *bytes.Buffer) {
@@ -147,15 +166,15 @@ func (mgr *FileContentCtxMgr) GetToolDef() []model.ToolDef {
 	}
 	loadDefsHandler := func(argsStr string) (string, error) {
 		args := struct {
-			File     string
-			DefsName []string
+			File        string
+			Identifiers []string
 		}{}
 		err := json.Unmarshal([]byte(argsStr), &args)
 		if err != nil {
 			return "", err
 		}
 		res := ""
-		for _, name := range args.DefsName {
+		for _, name := range args.Identifiers {
 			err := mgr.loadDefs(args.File, name)
 			if err != nil {
 				res += fmt.Sprintf("load file %s %s definition failed, error: %v\n", args.File, name, err)

@@ -7,6 +7,7 @@ import (
 	"llm_dev/model"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/sashabaranov/go-openai"
@@ -63,6 +64,7 @@ var grep = openai.FunctionDefinition{
 A powerful search tool built on ripgrep.
 
 Usage:
+- use grep for searching plain text in the file.
 - Always use -n options to add line number in the result
 
 <example>
@@ -134,19 +136,40 @@ type file struct {
 	chunks []Chunk
 }
 
-func (f *file) addChunk(s, e uint, comment string) {
-	f.chunks = append(f.chunks, Chunk{
+func (self *file) addChunk(s, e uint, comment string) {
+	self.chunks = append(self.chunks, Chunk{
 		startline: s,
 		endline:   e,
 		comment:   comment,
 	})
 }
-func (f *file) write(buf *bytes.Buffer) {
+func (self *file) write(buf *bytes.Buffer, path string) {
+	if len(self.chunks) == 0 {
+		return
+	}
+	sort.Slice(self.chunks, func(i, j int) bool {
+		return self.chunks[i].startline < self.chunks[j].startline
+	})
+	for _, c := range self.chunks {
+		optios := fmt.Sprintf(`NR>=%d && NR<=%d {print NR ": " $0}`, c.startline, c.endline)
+		cmd := exec.Command("awk", optios, path)
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+		buf.WriteString(fmt.Sprintf("Range: %d, %d\n", c.startline, c.endline))
+		buf.WriteString(fmt.Sprintf("Comment: %s\n", c.comment))
+		buf.WriteString("```\n")
+		buf.Write(output)
+		buf.WriteString("```\n")
+	}
 }
 
 type ReadContextMgr struct {
 	Root       string
 	ReadBuffer string
+
+	chunkByFile map[string]*file
 }
 
 func (mgr *ReadContextMgr) grep(arguments string) string {
@@ -196,6 +219,11 @@ func (mgr *ReadContextMgr) readContent(file string, line uint, mode string) stri
 func (mgr *ReadContextMgr) WriteContext(buf *bytes.Buffer) {
 	buf.WriteString("### READ & GREP ###\n")
 	buf.WriteString(readPrompt)
+	buf.WriteString("# Pinned Chunks\n\n")
+	for path, file := range mgr.chunkByFile {
+		buf.WriteString(fmt.Sprintf("- %s\n", path))
+		file.write(buf, filepath.Join(mgr.Root, path))
+	}
 	buf.WriteString("# Read Buffer\n\n")
 	buf.WriteString(mgr.ReadBuffer)
 	buf.WriteString("### END OF READ & GREP ###\n")
