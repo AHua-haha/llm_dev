@@ -12,6 +12,7 @@ import (
 	"llm_dev/database"
 	"llm_dev/model"
 	"os"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 	"github.com/sashabaranov/go-openai"
@@ -34,41 +35,27 @@ func NewModel(baseurl string, apikey string) *Model {
 }
 
 type AgentContext struct {
-	userPrompt string
-	history    []openai.ChatCompletionMessage
-	finished   bool
-
-	preTaskHistory []openai.ChatCompletionMessage
+	userPrompt    string
+	history       []openai.ChatCompletionMessage
+	finished      bool
+	finalResponse string
 
 	ctxMgr []ctx.ContextMgr
 
 	toolHandlerMap map[string]model.ToolDef
 }
 
-func NewAgentContext(preHistory []openai.ChatCompletionMessage, userprompt string, ctxMgr ...ctx.ContextMgr) *AgentContext {
+func NewAgentContext(userprompt string, ctxMgr ...ctx.ContextMgr) *AgentContext {
 	ctx := AgentContext{
 		userPrompt:     userprompt,
 		finished:       false,
 		toolHandlerMap: make(map[string]model.ToolDef),
-		preTaskHistory: preHistory,
 		ctxMgr:         ctxMgr,
 	}
 	for _, mgr := range ctxMgr {
 		ctx.registerTool(mgr.GetToolDef())
 	}
 	return &ctx
-}
-func (ctx *AgentContext) getResult() []openai.ChatCompletionMessage {
-	usermsg := openai.ChatCompletionMessage{
-		Role:    "user",
-		Content: ctx.userPrompt,
-	}
-	res := []openai.ChatCompletionMessage{usermsg}
-	historyLen := len(ctx.history)
-	if historyLen != 0 {
-		res = append(res, ctx.history[historyLen-1])
-	}
-	return res
 }
 func (ctx *AgentContext) genRequest(sysPrompt string) openai.ChatCompletionRequest {
 	req := openai.ChatCompletionRequest{
@@ -88,9 +75,7 @@ func (ctx *AgentContext) genRequest(sysPrompt string) openai.ChatCompletionReque
 		Role:    "user",
 		Content: ctx.userPrompt,
 	}
-	req.Messages = append(req.Messages, sysmsg)
-	req.Messages = append(req.Messages, ctx.preTaskHistory...)
-	req.Messages = append(req.Messages, usermsg)
+	req.Messages = append(req.Messages, sysmsg, usermsg)
 	req.Messages = append(req.Messages, ctx.history...)
 	for _, tool := range ctx.toolHandlerMap {
 		req.Tools = append(req.Tools, openai.Tool{
@@ -146,16 +131,20 @@ type BaseAgent struct {
 	root    string
 	buildOp *impl.BuildCodeBaseCtxOps
 
-	history []openai.ChatCompletionMessage
+	historyContextMgr ctx.HistoryContextMgr
 }
 
 func NewBaseAgent(codebase string, model Model) BaseAgent {
+	buildOp := &impl.BuildCodeBaseCtxOps{
+		RootPath: codebase,
+		Db:       database.GetDBClient().Database("llm_dev"),
+	}
 	agent := BaseAgent{
-		model: model,
-		root:  codebase,
-		buildOp: &impl.BuildCodeBaseCtxOps{
-			RootPath: codebase,
-			Db:       database.GetDBClient().Database("llm_dev"),
+		model:   model,
+		root:    codebase,
+		buildOp: buildOp,
+		historyContextMgr: ctx.HistoryContextMgr{
+			BuildOps: buildOp,
 		},
 	}
 	return agent
@@ -166,27 +155,27 @@ type AggregateChunk struct {
 	toolCalls map[int]openai.ToolCall
 }
 
-func (self *AggregateChunk) addChunk(delta openai.ChatCompletionStreamChoiceDelta) {
+func (acc *AggregateChunk) addChunk(delta openai.ChatCompletionStreamChoiceDelta) {
 	if delta.Content != "" {
-		self.msg.Content += delta.Content
+		acc.msg.Content += delta.Content
 	}
 	for _, toolCall := range delta.ToolCalls {
 		index := *toolCall.Index
-		value, exist := self.toolCalls[index]
+		value, exist := acc.toolCalls[index]
 		if !exist {
 			value = toolCall
 		} else {
 			value.Function.Arguments += toolCall.Function.Arguments
 		}
-		self.toolCalls[index] = value
+		acc.toolCalls[index] = value
 	}
 }
-func (self *AggregateChunk) res() openai.ChatCompletionMessage {
-	self.msg.Role = "assistant"
-	for _, toolcall := range self.toolCalls {
-		self.msg.ToolCalls = append(self.msg.ToolCalls, toolcall)
+func (acc *AggregateChunk) res() openai.ChatCompletionMessage {
+	acc.msg.Role = "assistant"
+	for _, toolcall := range acc.toolCalls {
+		acc.msg.ToolCalls = append(acc.msg.ToolCalls, toolcall)
 	}
-	return self.msg
+	return acc.msg
 }
 
 func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream, ctx *AgentContext) {
@@ -229,6 +218,9 @@ func (agent *BaseAgent) handleResponse(stream *openai.ChatCompletionStream, ctx 
 			ctx.addMessage(msg)
 		}
 	}
+	if strings.HasPrefix(resp.Content, "FINAL RESPONSE") {
+		ctx.finalResponse = resp.Content
+	}
 	var buf bytes.Buffer
 	ctx.writeContext(&buf)
 	file.WriteString("CONTEXT:\n")
@@ -249,25 +241,25 @@ func (agent *BaseAgent) NewUserTask(userprompt string) {
 	readMgr := ctx.ReadContextMgr{
 		Root: agent.root,
 	}
-	ctx := NewAgentContext(agent.history, userprompt, &callGraphMgr, &outlineCtxMgr, &buildContextMgr, &filectxMgr, &readMgr, &taskCtxMgr)
+	agentCtx := NewAgentContext(userprompt, &callGraphMgr, &outlineCtxMgr, &buildContextMgr, &agent.historyContextMgr, &filectxMgr, &readMgr, &taskCtxMgr)
 	for {
 		// var buf bytes.Buffer
 		// // ctx.fileCtxMgr.WriteUsedDefs(&buf)
 		// ctx.fileCtxMgr.WriteAutoLoadCtx(&buf)
 		// fmt.Print(buf.String())
-		req := ctx.genRequest(systemPompt)
+		req := agentCtx.genRequest(systemPompt)
 		stream, err := agent.model.CreateChatCompletionStream(context.TODO(), req)
 		if err != nil {
 			log.Error().Err(err).Msg("create chat completion stream failed")
 			break
 		}
 		defer stream.Close()
-		agent.handleResponse(stream, ctx)
-		if ctx.done() {
+		agent.handleResponse(stream, agentCtx)
+		if agentCtx.done() {
 			break
 		}
 	}
-	agent.history = append(agent.history, ctx.getResult()...)
+	agent.historyContextMgr.RecordUserTask(userprompt, agentCtx.finalResponse, taskCtxMgr.Records)
 }
 
 func DebugMsg(msg *openai.ChatCompletionRequest) {

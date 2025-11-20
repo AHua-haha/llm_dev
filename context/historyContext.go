@@ -77,7 +77,12 @@ func (task *UserTask) writeTask(buf *bytes.Buffer, id int) {
 		buf.WriteString("</conclusions>\n")
 	}
 	buf.WriteString("<final response>\n")
-	buf.WriteString(task.response)
+	if len(task.response) > 150 {
+		buf.WriteString(task.response[:150])
+		buf.WriteString("...\n")
+	} else {
+		buf.WriteString(task.response)
+	}
 	buf.WriteString("</final response>\n\n")
 }
 

@@ -46,7 +46,7 @@ func TestTool(t *testing.T) {
 		callGraphMgr := context.NewCallGraphMgr(root, &buildOp)
 		filectxMgr := context.NewFileCtxMgr(root, &buildOp)
 		outlineCtxMgr := context.NewOutlineCtxMgr(root, &buildOp)
-		ctx := NewAgentContext(nil, "hello world", &callGraphMgr, &outlineCtxMgr, &filectxMgr)
+		ctx := NewAgentContext("hello world", &callGraphMgr, &outlineCtxMgr, &filectxMgr)
 		test := ctx.genRequest("")
 		DebugMsg(&test)
 	})

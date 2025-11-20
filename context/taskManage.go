@@ -23,6 +23,8 @@ FINAL RESPONSE:
 you final response
 </example>
 
+IMPORTANT: You MUST review the history first to get the relevant context.
+
 
 `
 var createTask = openai.FunctionDefinition{
