@@ -162,7 +162,7 @@ func (mgr *CallGraphContextMgr) genUseOutput(usedDefs []impl.UsedDef) string {
 			defMap[useddef.DefFile] = append(defMap[useddef.DefFile], useddef)
 		}
 	}
-	buf.WriteString("# Use Definition In the codebase\n\n")
+	buf.WriteString("# Use Definition From the Codebase\n\n")
 	for file, defs := range defMap {
 		fc := utils.FileContent{}
 		for _, usedef := range defs {
