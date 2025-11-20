@@ -17,6 +17,13 @@ You have access to 'create_task', 'finish_task' tools for task management, 'reco
 - finish task: mark the task completed IMMEDIATELY after you finish the task, you MUST specify the task result success or fail.
 - record conclusion: record all conclusinos and results that is crucial to complete the task while doing the task. Once you get a conclusion or result, record it IMMEDIATELY.
 
+IMPORTANT: for the final response to the user's prompt, you MUST output with 'FINAL RESPONSE' at the beginning.
+<example>
+FINAL RESPONSE:
+you final response
+</example>
+
+
 `
 var createTask = openai.FunctionDefinition{
 	Name:   "create_task",
